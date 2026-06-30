@@ -18,6 +18,12 @@ import { plans, systemSettings, user, userQuota } from "./schema/index.js";
  * 因此一般无需手动提升；本脚本的 --promote 仅作兜底/补救手段。
  */
 async function main() {
+  // 自动加载 packages/db/.env（不存在则用 shell 环境变量）
+  try {
+    process.loadEnvFile();
+  } catch {
+    /* 无 .env 文件，忽略 */
+  }
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("缺少 DATABASE_URL（请用 Neon 直连串，勿用 Hyperdrive 串）");
 

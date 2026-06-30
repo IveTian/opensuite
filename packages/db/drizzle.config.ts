@@ -6,8 +6,24 @@ import { defineConfig } from "drizzle-kit";
  * 关键分界：本机工具（generate/migrate/push/studio）一律用 Neon 的「直连串」DATABASE_URL，
  * 切勿误用 Hyperdrive 连接串——Hyperdrive 绑定只能从 Worker 运行时访问。
  *
- * 用法：在 packages/db 下 `export DATABASE_URL=<Neon 直连串>` 后再运行迁移命令。
+ * 用法（任选其一）：
+ *   1) 在 packages/db/.env 写 DATABASE_URL=...（本文件会自动加载）
+ *   2) `DATABASE_URL="postgres://..." pnpm drizzle-kit migrate`
  */
+
+// 自动加载当前目录的 .env（packages/db/.env）；不存在则回退到 shell 环境变量
+try {
+  process.loadEnvFile();
+} catch {
+  /* 无 .env 文件，忽略 */
+}
+
+if (!process.env.DATABASE_URL) {
+  throw new Error(
+    "缺少 DATABASE_URL：请在 packages/db/.env 设置，或用 `DATABASE_URL=... pnpm drizzle-kit migrate`（Neon 直连串，勿用 Hyperdrive 串）",
+  );
+}
+
 export default defineConfig({
   schema: "./src/schema/index.ts",
   out: "./drizzle",
