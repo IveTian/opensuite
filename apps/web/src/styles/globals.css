@@ -1,0 +1,15 @@
+/* 顺序不可反：先 Tailwind v4，再 HeroUI V3 样式 */
+@import "tailwindcss";
+@import "@heroui/styles";
+
+/* 暗黑模式由 <html class="dark"> 驱动，无需 Provider */
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-background text-foreground antialiased;
+}

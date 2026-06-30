@@ -1,0 +1,32 @@
+{
+  "name": "@mailflare/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema/index.ts",
+    "./client": "./src/client.ts"
+  },
+  "scripts": {
+    "generate": "drizzle-kit generate",
+    "migrate": "drizzle-kit migrate",
+    "push": "drizzle-kit push",
+    "studio": "drizzle-kit studio",
+    "seed": "tsx src/seed.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo \"(db) no lint\""
+  },
+  "dependencies": {
+    "@mailflare/shared": "workspace:*",
+    "drizzle-orm": "catalog:",
+    "pg": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/pg": "catalog:",
+    "drizzle-kit": "catalog:",
+    "tsx": "^4.19.0",
+    "typescript": "catalog:"
+  }
+}

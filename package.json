@@ -1,0 +1,26 @@
+{
+  "name": "mailflare",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "deploy": "turbo run deploy",
+    "typecheck": "turbo run typecheck",
+    "lint": "turbo run lint",
+    "db:generate": "pnpm --filter @mailflare/db generate",
+    "db:migrate": "pnpm --filter @mailflare/db migrate",
+    "db:push": "pnpm --filter @mailflare/db push",
+    "db:seed": "pnpm --filter @mailflare/db seed",
+    "auth:generate": "pnpm --filter @mailflare/api auth:generate",
+    "cf-typegen": "pnpm --filter @mailflare/api cf-typegen"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.0",
+    "typescript": "^5.7.3"
+  }
+}

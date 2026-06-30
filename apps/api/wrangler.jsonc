@@ -1,0 +1,46 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "mailflare-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-01",
+  // pg / node-postgres 需要 Node 兼容
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+
+  // 每日维护：重置发信日计数、过期邀请码（UTC 0 点）
+  "triggers": {
+    "crons": ["0 0 * * *"]
+  },
+
+  // Hyperdrive：把 <hyperdrive-id> 替换为 `wrangler hyperdrive create` 输出的 id。
+  // 本地 dev 的直连串请用环境变量覆盖：
+  //   WRANGLER_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE="postgres://...."
+  // （勿把真实凭据写进本文件提交）
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "<hyperdrive-id>"
+    }
+  ],
+
+  // R2：阶段二存原始 MIME / 附件（第一阶段占位绑定）
+  "r2_buckets": [
+    {
+      "binding": "RAW_EMAILS",
+      "bucket_name": "mailflare-raw-emails"
+    }
+  ],
+
+  // send_email：阶段二出站用（第一阶段占位）
+  "send_email": [
+    {
+      "name": "EMAIL"
+    }
+  ],
+
+  "vars": {
+    "WEB_ORIGIN": "http://localhost:5173",
+    "API_ORIGIN": "http://localhost:8787",
+    "COOKIE_DOMAIN": ""
+  }
+}

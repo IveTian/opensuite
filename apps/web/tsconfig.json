@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "types": ["vite/client"],
+    "noEmit": true,
+    // 应用不输出 .d.ts；关闭可避免 better-auth 深层类型触发 TS2742（不可移植推断类型）
+    "declaration": false
+  },
+  "include": ["src", "vite.config.ts"]
+}

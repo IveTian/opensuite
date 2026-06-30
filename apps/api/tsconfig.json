@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023"],
+    // Cloudflare 运行时类型由 worker-configuration.d.ts（include 中）全局提供，
+    // 不在 types 里再引 @cloudflare/workers-types，避免重复定义冲突。
+    "types": [],
+    "jsx": "react-jsx"
+  },
+  "include": ["src/**/*.ts", "auth.config.ts", "worker-configuration.d.ts"]
+}

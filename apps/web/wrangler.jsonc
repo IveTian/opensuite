@@ -1,0 +1,10 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "mailflare-web",
+  "compatibility_date": "2026-06-01",
+  // 纯静态资产 Worker：托管 Vite 构建产物，SPA 路由回退 index.html
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  }
+}

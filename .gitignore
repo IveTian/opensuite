@@ -1,0 +1,35 @@
+# 依赖
+node_modules/
+.pnpm-store/
+
+# 构建产物
+dist/
+build/
+*.tsbuildinfo
+
+# Cloudflare / Wrangler
+.wrangler/
+# 注：worker-configuration.d.ts 由 `wrangler types` 生成，但我们纳入提交，
+# 使仓库克隆后无需先生成即可通过类型检查（仅含非密钥的绑定/vars 形状）。
+
+# 环境变量与密钥（切勿提交）
+.env
+.env.*
+!.env.example
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+
+# Turbo
+.turbo/
+
+# 日志
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# 编辑器 / 系统
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json

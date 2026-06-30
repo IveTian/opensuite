@@ -1,0 +1,17 @@
+# 复制为 .dev.vars（本地，勿提交）。生产用 `wrangler secret put BETTER_AUTH_SECRET`。
+# 生成密钥：openssl rand -base64 32
+BETTER_AUTH_SECRET="replace-with-openssl-rand-base64-32"
+
+# 本地前后端地址（与 vars 一致即可，secret 文件可覆盖）
+WEB_ORIGIN="http://localhost:5173"
+API_ORIGIN="http://localhost:8787"
+
+# 本地跨子域 cookie 根域留空（localhost 同源 same-site）；生产填 .example.com
+COOKIE_DOMAIN=""
+
+# 可选：始终视为管理员的用户 id
+# SUPER_ADMIN_ID=""
+
+# 本地 wrangler dev 让 Hyperdrive 绑定连到的「直连」Postgres（与 DATABASE_URL 相同即可）
+# 注意：这是 wrangler 识别的特殊变量名（绑定名为 HYPERDRIVE）
+WRANGLER_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE="postgres://user:password@your-neon-host/dbname?sslmode=require"
