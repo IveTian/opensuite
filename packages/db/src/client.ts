@@ -7,6 +7,31 @@ const { Client } = pg;
 export type Database = NodePgDatabase<typeof schema>;
 
 /**
+ * 归一化连接串以兼容 node-postgres。
+ *
+ * libpq/psql 约定 `sslrootcert=system`（PlanetScale 等）表示用系统 CA，但 node-postgres
+ * 会把它当文件路径读取 → ENOENT 'system'。这里移除该参数与 verify-* 的 sslmode，
+ * 改用 Node 内置 CA 做证书校验（rejectUnauthorized:true ≈ verify-full）。
+ *
+ * 仅对显式带这些参数的连接串生效；Worker 经 Hyperdrive 的连接串不受影响。
+ */
+function normalizeConn(connectionString: string): pg.ClientConfig {
+  try {
+    const u = new URL(connectionString);
+    const sslrootcert = u.searchParams.get("sslrootcert");
+    const sslmode = u.searchParams.get("sslmode");
+    if (sslrootcert === "system" || sslmode?.startsWith("verify")) {
+      u.searchParams.delete("sslrootcert");
+      u.searchParams.delete("sslmode");
+      return { connectionString: u.toString(), ssl: { rejectUnauthorized: true } };
+    }
+  } catch {
+    /* 非标准 URL，原样透传 */
+  }
+  return { connectionString };
+}
+
+/**
  * 用 node-postgres 单连建立 Drizzle 客户端。
  *
  * 设计要点（Cloudflare 官方 Drizzle × Hyperdrive 模式）：
@@ -20,7 +45,7 @@ export async function createDb(connectionString: string): Promise<{
   db: Database;
   client: pg.Client;
 }> {
-  const client = new Client({ connectionString });
+  const client = new Client(normalizeConn(connectionString));
   await client.connect();
   const db = drizzle(client, { schema });
   return { db, client };
