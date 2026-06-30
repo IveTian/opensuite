@@ -1,7 +1,10 @@
 import { Button } from "@heroui/react";
+import DOMPurify from "dompurify";
+import { useEffect, useRef, useState } from "react";
 import { Badge } from "../../components/ui";
 import {
   ForwardIcon,
+  ImageIcon,
   PaperclipIcon,
   ReplyIcon,
   StarFilledIcon,
@@ -19,12 +22,15 @@ interface Attach {
   filename: string | null;
   contentType: string | null;
   sizeBytes: number | null;
+  contentId?: string | null;
 }
 export interface MsgDetail {
   id: string;
   addressId: string;
   fromAddress: string | null;
   toAddresses: string[] | null;
+  ccAddresses?: string[] | null;
+  bccAddresses?: string[] | null;
   subject: string | null;
   bodyText: string | null;
   bodyHtml: string | null;
@@ -48,21 +54,153 @@ interface ThreadItem {
   createdAt: string;
 }
 
-function Body({ text, html }: { text: string | null; html: string | null }) {
-  if (text)
+const ALLOWED_TAGS = [
+  "a", "b", "blockquote", "br", "code", "div", "em", "h1", "h2", "h3", "h4", "h5",
+  "h6", "hr", "i", "img", "li", "ol", "p", "pre", "s", "span", "strong", "sub",
+  "sup", "table", "tbody", "td", "tfoot", "th", "thead", "tr", "u", "ul", "font",
+];
+const ALLOWED_ATTR = [
+  "href", "src", "alt", "title", "width", "height", "align", "valign", "border",
+  "cellpadding", "cellspacing", "colspan", "rowspan", "style", "color", "bgcolor",
+  "class", "target", "rel",
+];
+
+/** 清洗邮件 HTML；返回清洗结果与「是否含远程资源」。showImages=false 时剥离远程图片。 */
+function sanitizeEmail(html: string, showImages: boolean): { html: string; hadRemote: boolean } {
+  let hadRemote = false;
+  const hook = (node: Element) => {
+    if (node.tagName === "A") {
+      node.setAttribute("target", "_blank");
+      node.setAttribute("rel", "noopener noreferrer nofollow");
+    }
+    if (node.tagName === "IMG") {
+      const src = node.getAttribute("src") ?? "";
+      if (/^https?:/i.test(src)) {
+        hadRemote = true;
+        if (!showImages) {
+          node.removeAttribute("src");
+          node.setAttribute("data-blocked", "1");
+        }
+      }
+    }
+    const style = node.getAttribute?.("style");
+    if (style && /url\(\s*['"]?https?:/i.test(style)) {
+      hadRemote = true;
+      if (!showImages) {
+        node.setAttribute("style", style.replace(/url\(\s*['"]?https?:[^)]*\)/gi, "none"));
+      }
+    }
+  };
+  DOMPurify.addHook("afterSanitizeAttributes", hook);
+  const clean = DOMPurify.sanitize(html, { ALLOWED_TAGS, ALLOWED_ATTR });
+  DOMPurify.removeHook("afterSanitizeAttributes");
+  return { html: clean, hadRemote };
+}
+
+function normCid(s: string): string {
+  return s.replace(/^<|>$/g, "");
+}
+
+function HtmlBody({ message }: { message: MsgDetail }) {
+  const { bodyHtml, attachments, id } = message;
+  const [showImages, setShowImages] = useState(false);
+  const [hasRemote, setHasRemote] = useState(false);
+  const [doc, setDoc] = useState<string | null>(null);
+  const frameRef = useRef<HTMLIFrameElement>(null);
+
+  useEffect(() => {
+    if (!bodyHtml) return;
+    let cancelled = false;
+    const urls: string[] = [];
+    (async () => {
+      const { html: clean, hadRemote } = sanitizeEmail(bodyHtml, showImages);
+      if (!cancelled) setHasRemote(hadRemote);
+
+      let finalHtml = clean;
+      const cidAtts = attachments.filter((a) => a.contentId);
+      if (cidAtts.length && /cid:/i.test(clean)) {
+        const parsed = new DOMParser().parseFromString(clean, "text/html");
+        await Promise.all(
+          Array.from(parsed.querySelectorAll("img")).map(async (img) => {
+            const m = /^cid:(.+)$/i.exec(img.getAttribute("src") ?? "");
+            if (!m) return;
+            const cid = normCid(m[1] ?? "");
+            const att = cidAtts.find((a) => normCid(a.contentId ?? "") === cid);
+            if (!att) return;
+            try {
+              const res = await fetch(`${API}/api/me/messages/${id}/attachments/${att.id}`, {
+                credentials: "include",
+              });
+              const blob = await res.blob();
+              const url = URL.createObjectURL(blob);
+              urls.push(url);
+              img.setAttribute("src", url);
+            } catch {
+              img.removeAttribute("src");
+            }
+          }),
+        );
+        finalHtml = parsed.body.innerHTML;
+      }
+
+      if (cancelled) return;
+      setDoc(
+        `<!doctype html><html><head><meta charset="utf-8"><base target="_blank"><style>` +
+          `html,body{margin:0}body{padding:14px;font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#1a1a1a;word-break:break-word;overflow-wrap:anywhere}` +
+          `img{max-width:100%;height:auto}a{color:#2563eb}blockquote{border-left:3px solid #d4d4d8;margin:0 0 0 2px;padding-left:12px;color:#52525b}table{max-width:100%}` +
+          `</style></head><body>${finalHtml}</body></html>`,
+      );
+    })();
+    return () => {
+      cancelled = true;
+      urls.forEach(URL.revokeObjectURL);
+    };
+  }, [bodyHtml, showImages, attachments, id]);
+
+  function resize() {
+    const f = frameRef.current;
+    const d = f?.contentDocument;
+    if (f && d?.body) f.style.height = d.body.scrollHeight + 8 + "px";
+  }
+
+  return (
+    <div>
+      {hasRemote && !showImages && (
+        <div className="mb-2 flex items-center justify-between gap-3 rounded-xl bg-surface-secondary px-3 py-2 text-sm">
+          <span className="flex items-center gap-2 text-muted">
+            <ImageIcon className="size-4" />
+            为保护隐私，已拦截远程图片
+          </span>
+          <Button size="sm" variant="outline" onClick={() => setShowImages(true)}>
+            显示图片
+          </Button>
+        </div>
+      )}
+      <iframe
+        ref={frameRef}
+        title="email-body"
+        sandbox="allow-same-origin allow-popups"
+        srcDoc={doc ?? ""}
+        onLoad={() => {
+          resize();
+          const imgs = frameRef.current?.contentDocument?.images;
+          if (imgs) Array.from(imgs).forEach((im) => im.addEventListener("load", resize));
+          setTimeout(resize, 400);
+        }}
+        className="w-full rounded-xl border-0 bg-white"
+        style={{ height: 200 }}
+      />
+    </div>
+  );
+}
+
+function Body({ message }: { message: MsgDetail }) {
+  if (message.bodyHtml) return <HtmlBody message={message} />;
+  if (message.bodyText)
     return (
       <pre className="whitespace-pre-wrap break-words font-sans text-sm text-foreground">
-        {text}
+        {message.bodyText}
       </pre>
-    );
-  if (html)
-    return (
-      <iframe
-        title="email-body"
-        sandbox=""
-        srcDoc={html}
-        className="h-96 w-full rounded-xl border-0 bg-white"
-      />
     );
   return <p className="text-sm text-muted">（无正文）</p>;
 }
@@ -160,7 +298,7 @@ export function MessageView({
       )}
 
       <div className="rounded-2xl bg-surface p-5 shadow-surface">
-        <Body text={m.bodyText} html={m.bodyHtml} />
+        <Body message={m} />
       </div>
 
       {others.length > 0 && (

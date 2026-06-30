@@ -12,6 +12,7 @@ import {
 import { z } from "zod";
 import type { AppEnv } from "../env.js";
 import { makeSnippet, resolveDelivery, storeInboundEmail } from "../lib/mail.js";
+import { sanitizeOutboundHtml } from "../lib/sanitize.js";
 import { attachmentKey, base64ToBytes, rawKey } from "../lib/storage.js";
 
 /** 当前用户名下全部地址 id */
@@ -189,6 +190,7 @@ export const messageRoutes = new Hono<AppEnv>()
     const db = c.var.db;
     const user = c.var.user!;
     const body = c.req.valid("json");
+    if (body.html) body.html = sanitizeOutboundHtml(body.html);
 
     const from = await db.query.emailAddresses.findFirst({
       where: and(
@@ -222,12 +224,22 @@ export const messageRoutes = new Hono<AppEnv>()
     if (inReplyTo) headers["In-Reply-To"] = inReplyTo;
     if (references) headers["References"] = references;
 
-    const emailAttachments = (body.attachments ?? []).map((a) => ({
-      disposition: "attachment" as const,
-      filename: a.filename,
-      type: a.contentType ?? "application/octet-stream",
-      content: base64ToBytes(a.contentBase64),
-    }));
+    const emailAttachments = (body.attachments ?? []).map((a) =>
+      a.inline && a.contentId
+        ? {
+            disposition: "inline" as const,
+            contentId: a.contentId,
+            filename: a.filename,
+            type: a.contentType ?? "application/octet-stream",
+            content: base64ToBytes(a.contentBase64),
+          }
+        : {
+            disposition: "attachment" as const,
+            filename: a.filename,
+            type: a.contentType ?? "application/octet-stream",
+            content: base64ToBytes(a.contentBase64),
+          },
+    );
 
     try {
       await c.env.EMAIL.send({
@@ -311,6 +323,7 @@ export const messageRoutes = new Hono<AppEnv>()
     const db = c.var.db;
     const user = c.var.user!;
     const b = c.req.valid("json");
+    if (b.html) b.html = sanitizeOutboundHtml(b.html);
 
     const from = await db.query.emailAddresses.findFirst({
       where: and(

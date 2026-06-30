@@ -13,3 +13,88 @@ body,
 body {
   @apply bg-background text-foreground antialiased;
 }
+
+/* ── TipTap 富文本编辑器内容区 ── */
+.tiptap {
+  min-height: 12rem;
+  padding: 0.75rem 1rem;
+  outline: none;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--color-foreground);
+}
+.tiptap :first-child {
+  margin-top: 0;
+}
+.tiptap p {
+  margin: 0.5rem 0;
+}
+.tiptap h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 1rem 0 0.5rem;
+}
+.tiptap h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 1rem 0 0.5rem;
+}
+.tiptap h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0.75rem 0 0.5rem;
+}
+.tiptap ul,
+.tiptap ol {
+  padding-left: 1.5rem;
+  margin: 0.5rem 0;
+}
+.tiptap ul {
+  list-style: disc;
+}
+.tiptap ol {
+  list-style: decimal;
+}
+.tiptap a {
+  color: var(--color-accent);
+  text-decoration: underline;
+}
+.tiptap blockquote {
+  border-left: 3px solid var(--color-separator);
+  padding-left: 0.875rem;
+  margin: 0.5rem 0;
+  color: var(--color-muted);
+}
+.tiptap pre {
+  background: var(--color-surface-secondary);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8125rem;
+  overflow-x: auto;
+}
+.tiptap code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+}
+.tiptap img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+}
+.tiptap img.ProseMirror-selectednode {
+  outline: 2px solid var(--color-accent);
+}
+.tiptap hr {
+  border: none;
+  border-top: 1px solid var(--color-separator);
+  margin: 1rem 0;
+}
+/* Placeholder（空编辑器占位） */
+.tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--color-muted);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}

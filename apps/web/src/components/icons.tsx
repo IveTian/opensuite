@@ -269,3 +269,104 @@ export const InfoIcon = (p: IconProps) => (
     <path d="M12 16v-4M12 8h.01" />
   </Icon>
 );
+
+/* ── 富文本编辑器工具栏图标 ── */
+
+export const BoldIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M6 12h9a4 4 0 0 1 0 8H7a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h7a4 4 0 0 1 0 8" />
+  </Icon>
+);
+
+export const ItalicIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M19 4h-9M14 20H5M15 4 9 20" />
+  </Icon>
+);
+
+export const UnderlineIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M6 4v6a6 6 0 0 0 12 0V4M4 20h16" />
+  </Icon>
+);
+
+export const StrikethroughIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M16 4H9a3 3 0 0 0-2.83 4M14 12a4 4 0 0 1 0 8H6M4 12h16" />
+  </Icon>
+);
+
+export const ListBulletIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
+  </Icon>
+);
+
+export const ListOrderedIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M10 6h11M10 12h11M10 18h11M4 6h1v4M4 10h2M6 18H4c0-1 2-2 2-3s-1-1.5-2-1" />
+  </Icon>
+);
+
+export const QuoteIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M16 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2v3a1 1 0 0 1-1 1h-1a1 1 0 0 0 0 2h1a3 3 0 0 0 3-3V5a2 2 0 0 0-2-2zM6 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2v3a1 1 0 0 1-1 1H6a1 1 0 0 0 0 2h1a3 3 0 0 0 3-3V5a2 2 0 0 0-2-2z" />
+  </Icon>
+);
+
+export const LinkIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+  </Icon>
+);
+
+export const ImageIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x="3" y="3" width="18" height="18" rx="2" />
+    <circle cx="9" cy="9" r="2" />
+    <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+  </Icon>
+);
+
+export const CodeIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="m16 18 6-6-6-6M8 6l-6 6 6 6" />
+  </Icon>
+);
+
+export const PaletteIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z" />
+    <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
+    <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
+    <circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
+    <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
+  </Icon>
+);
+
+export const HeadingIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M6 12h12M6 20V4M18 20V4" />
+  </Icon>
+);
+
+export const UndoIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M3 7v6h6" />
+    <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" />
+  </Icon>
+);
+
+export const RedoIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M21 7v6h-6" />
+    <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13" />
+  </Icon>
+);
+
+export const RemoveFormattingIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M4 7V4h16v3M5 20h6M13 4 8 20M15 15l5 5M20 15l-5 5" />
+  </Icon>
+);

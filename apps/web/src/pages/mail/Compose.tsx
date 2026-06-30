@@ -1,10 +1,13 @@
-import { Button, Input, Label, TextArea, TextField } from "@heroui/react";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { Button, Input, Label, TextField } from "@heroui/react";
+import { Suspense, lazy, useEffect, useRef, useState, type FormEvent } from "react";
 import { NativeSelect } from "../../components/NativeSelect";
 import { Alert } from "../../components/ui";
 import { PaperclipIcon, SendIcon, XIcon } from "../../components/icons";
 import { api, ApiError } from "../../lib/api";
+import { extractInlineImages, htmlEscape, htmlToText } from "../../lib/email-html";
 import { formatBytes } from "../../lib/format";
+
+const RichTextEditor = lazy(() => import("../../components/RichTextEditor"));
 
 interface Addr {
   id: string;
@@ -13,8 +16,11 @@ interface Addr {
 export interface ComposeInitial {
   fromAddressId?: string;
   to?: string;
+  cc?: string;
+  bcc?: string;
   subject?: string;
   text?: string;
+  html?: string;
   replyToMessageId?: string;
   draftId?: string;
 }
@@ -34,6 +40,13 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
+function splitRecipients(s: string): string[] {
+  return s
+    .split(/[,\s;]+/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
 export function Compose({
   addresses,
   initial,
@@ -45,11 +58,19 @@ export function Compose({
   onClose: () => void;
   onSent: () => void;
 }) {
+  const initialHtml =
+    initial?.html ??
+    (initial?.text ? `<p>${htmlEscape(initial.text).replace(/\r?\n/g, "<br>")}</p>` : "");
+
   const [fromAddressId, setFromAddressId] = useState(
     initial?.fromAddressId ?? addresses[0]?.id ?? "",
   );
   const [to, setTo] = useState(initial?.to ?? "");
+  const [cc, setCc] = useState(initial?.cc ?? "");
+  const [bcc, setBcc] = useState(initial?.bcc ?? "");
+  const [showCc, setShowCc] = useState(Boolean(initial?.cc || initial?.bcc));
   const [subject, setSubject] = useState(initial?.subject ?? "");
+  const [html, setHtml] = useState(initialHtml);
   const [text, setText] = useState(initial?.text ?? "");
   const [atts, setAtts] = useState<AttachmentDraft[]>([]);
   const [draftId, setDraftId] = useState<string | undefined>(initial?.draftId);
@@ -57,9 +78,6 @@ export function Compose({
   const [busy, setBusy] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const touched = useRef(false);
-
-  const recipients = () =>
-    to.split(/[,\s;]+/).map((s) => s.trim()).filter(Boolean);
 
   // 草稿自动保存（用户编辑后防抖 1.5s）
   useEffect(() => {
@@ -69,9 +87,12 @@ export function Compose({
         const res = await api.post<{ id: string }>("/api/me/messages/draft", {
           id: draftId,
           fromAddressId,
-          to: recipients(),
+          to: splitRecipients(to),
+          cc: splitRecipients(cc),
+          bcc: splitRecipients(bcc),
           subject,
-          text,
+          text: text || htmlToText(html),
+          html,
         });
         setDraftId(res.id);
         setSavedAt(new Date().toLocaleTimeString("zh-CN"));
@@ -81,7 +102,7 @@ export function Compose({
     }, 1500);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [to, subject, text, fromAddressId]);
+  }, [to, cc, bcc, subject, html, fromAddressId]);
 
   async function addFiles(files: FileList | null) {
     if (!files) return;
@@ -101,23 +122,30 @@ export function Compose({
   async function send(e: FormEvent) {
     e.preventDefault();
     setError("");
-    if (!recipients().length) return setError("请填写收件人");
+    const recipients = splitRecipients(to);
+    if (!recipients.length) return setError("请填写收件人");
+
+    // 抽取正文内联图片为 inline 附件，正文 <img> 改写为 cid:
+    const { html: outHtml, inline } = extractInlineImages(html);
+    const plain = text.trim() || htmlToText(outHtml);
+    const fileAttachments = atts.map((a) => ({
+      filename: a.filename,
+      contentType: a.contentType,
+      contentBase64: a.contentBase64,
+    }));
+    const attachments = [...fileAttachments, ...inline];
+
     setBusy(true);
     try {
       await api.post("/api/me/messages/send", {
         fromAddressId,
-        to: recipients(),
+        to: recipients,
+        ...(cc.trim() ? { cc: splitRecipients(cc) } : {}),
+        ...(bcc.trim() ? { bcc: splitRecipients(bcc) } : {}),
         subject,
-        text,
-        ...(atts.length
-          ? {
-              attachments: atts.map((a) => ({
-                filename: a.filename,
-                contentType: a.contentType,
-                contentBase64: a.contentBase64,
-              })),
-            }
-          : {}),
+        ...(plain ? { text: plain } : {}),
+        ...(outHtml ? { html: outHtml } : {}),
+        ...(attachments.length ? { attachments } : {}),
         ...(initial?.replyToMessageId ? { replyToMessageId: initial.replyToMessageId } : {}),
         ...(draftId ? { draftId } : {}),
       });
@@ -142,6 +170,7 @@ export function Compose({
           </Button>
         </div>
       </div>
+
       <NativeSelect
         label="发件地址"
         value={fromAddressId}
@@ -156,8 +185,18 @@ export function Compose({
           </option>
         ))}
       </NativeSelect>
+
       <TextField>
-        <Label>收件人（逗号分隔）</Label>
+        <div className="flex items-center justify-between">
+          <Label>收件人（逗号分隔）</Label>
+          <button
+            type="button"
+            onClick={() => setShowCc((v) => !v)}
+            className="text-xs text-accent"
+          >
+            抄送 / 密送
+          </button>
+        </div>
         <Input
           value={to}
           onChange={(e) => {
@@ -167,6 +206,34 @@ export function Compose({
           placeholder="a@b.com, c@d.com"
         />
       </TextField>
+
+      {showCc && (
+        <>
+          <TextField>
+            <Label>抄送 CC</Label>
+            <Input
+              value={cc}
+              onChange={(e) => {
+                setCc(e.target.value);
+                touched.current = true;
+              }}
+              placeholder="抄送收件人"
+            />
+          </TextField>
+          <TextField>
+            <Label>密送 BCC</Label>
+            <Input
+              value={bcc}
+              onChange={(e) => {
+                setBcc(e.target.value);
+                touched.current = true;
+              }}
+              placeholder="密送收件人"
+            />
+          </TextField>
+        </>
+      )}
+
       <TextField>
         <Label>主题</Label>
         <Input
@@ -177,17 +244,24 @@ export function Compose({
           }}
         />
       </TextField>
-      <TextField className="flex-1">
-        <Label>正文</Label>
-        <TextArea
-          className="min-h-40"
-          value={text}
-          onChange={(e) => {
-            setText(e.target.value);
-            touched.current = true;
-          }}
-        />
-      </TextField>
+
+      <div className="flex min-h-64 flex-1 flex-col">
+        <Label className="mb-1.5">正文</Label>
+        <Suspense
+          fallback={<div className="min-h-48 flex-1 animate-pulse rounded-xl bg-surface-secondary" />}
+        >
+          <RichTextEditor
+            className="flex-1"
+            value={initialHtml}
+            autoFocus={!initial?.replyToMessageId}
+            onChange={(h, t) => {
+              setHtml(h);
+              setText(t);
+              touched.current = true;
+            }}
+          />
+        </Suspense>
+      </div>
 
       <div>
         <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-border px-3 py-1.5 text-sm text-foreground hover:bg-surface-secondary">

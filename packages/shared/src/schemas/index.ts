@@ -138,6 +138,9 @@ export const attachmentInputSchema = z.object({
   filename: z.string().max(255),
   contentType: z.string().max(127).optional(),
   contentBase64: z.string().max(36_000_000), // ~25MiB base64
+  /** 内联资源（正文 cid: 引用的图片）。inline 时需提供 contentId。 */
+  inline: z.boolean().optional(),
+  contentId: z.string().max(255).optional(),
 });
 export type AttachmentInput = z.infer<typeof attachmentInputSchema>;
 

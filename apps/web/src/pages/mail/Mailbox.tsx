@@ -19,6 +19,7 @@ import {
 } from "../../components/icons";
 import { useFetch } from "../../hooks/useFetch";
 import { api } from "../../lib/api";
+import { buildForwardHtml, buildReplyHtml } from "../../lib/email-html";
 import { formatBytes, formatDate } from "../../lib/format";
 import { useTheme } from "../../providers/theme";
 import { Compose, type ComposeInitial } from "./Compose";
@@ -65,10 +66,6 @@ const FOLDERS: { key: string; label: string; icon: ComponentType<{ className?: s
 ];
 const LIMIT = 50;
 
-function quote(m: MsgDetail): string {
-  return `\n\n---------- 原邮件 ----------\n发件人：${m.fromAddress}\n主题：${m.subject ?? ""}\n\n${m.bodyText ?? ""}`;
-}
-
 function initials(value: string | null): string {
   if (!value) return "?";
   const local = value.split("@")[0] ?? value;
@@ -100,7 +97,16 @@ export function Mailbox() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [composing, setComposing] = useState(false);
   const [composeInitial, setComposeInitial] = useState<ComposeInitial | undefined>();
+  const [composeKey, setComposeKey] = useState(0);
   const [simBusy, setSimBusy] = useState(false);
+
+  /** 打开撰写面板（每次都换 key，确保编辑器以新内容重新挂载） */
+  function startCompose(init?: ComposeInitial) {
+    setComposeInitial(init);
+    setComposeKey((k) => k + 1);
+    setComposing(true);
+    setSelectedId(null);
+  }
 
   const mailboxes = (addresses ?? []).filter((a) => a.type === "mailbox");
   const items = listData?.items ?? [];
@@ -126,15 +132,16 @@ export function Mailbox() {
   async function openItem(item: MsgItem) {
     if (folder === "draft") {
       const d = await api.get<MsgDetail>(`/api/me/messages/${item.id}`);
-      setComposeInitial({
+      startCompose({
         draftId: d.id,
         fromAddressId: d.addressId,
         to: (d.toAddresses ?? []).join(", "),
+        cc: (d.ccAddresses ?? []).join(", "),
+        bcc: (d.bccAddresses ?? []).join(", "),
         subject: d.subject ?? "",
         text: d.bodyText ?? "",
+        html: d.bodyHtml ?? undefined,
       });
-      setComposing(true);
-      setSelectedId(null);
       return;
     }
     setComposing(false);
@@ -152,29 +159,37 @@ export function Mailbox() {
   }
 
   function newCompose() {
-    setComposeInitial({ fromAddressId: mailboxes[0]?.id });
-    setComposing(true);
-    setSelectedId(null);
+    startCompose({ fromAddressId: mailboxes[0]?.id });
   }
   function reply(m: MsgDetail) {
-    setComposeInitial({
+    const date = formatDate(m.receivedAt ?? m.sentAt ?? m.createdAt);
+    startCompose({
       fromAddressId: m.addressId,
       to: m.fromAddress ?? "",
       subject: m.subject?.startsWith("Re:") ? m.subject : `Re: ${m.subject ?? ""}`,
-      text: quote(m),
+      html: buildReplyHtml({
+        fromAddress: m.fromAddress,
+        date,
+        bodyHtml: m.bodyHtml,
+        bodyText: m.bodyText,
+      }),
       replyToMessageId: m.id,
     });
-    setComposing(true);
-    setSelectedId(null);
   }
   function forward(m: MsgDetail) {
-    setComposeInitial({
+    const date = formatDate(m.receivedAt ?? m.sentAt ?? m.createdAt);
+    startCompose({
       fromAddressId: m.addressId,
       subject: m.subject?.startsWith("Fwd:") ? m.subject : `Fwd: ${m.subject ?? ""}`,
-      text: quote(m),
+      html: buildForwardHtml({
+        fromAddress: m.fromAddress,
+        subject: m.subject,
+        date,
+        to: m.toAddresses,
+        bodyHtml: m.bodyHtml,
+        bodyText: m.bodyText,
+      }),
     });
-    setComposing(true);
-    setSelectedId(null);
   }
 
   async function simulate() {
@@ -447,6 +462,7 @@ export function Mailbox() {
       <div className="hidden min-w-0 flex-1 overflow-auto p-6 sm:block">
         {composing ? (
           <Compose
+            key={composeKey}
             addresses={mailboxes}
             initial={composeInitial}
             onClose={() => {
