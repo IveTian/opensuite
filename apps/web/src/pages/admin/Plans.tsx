@@ -115,7 +115,7 @@ export function Plans() {
         {error && <div className="mt-3"><Alert>{error}</Alert></div>}
       </Panel>
       {loading ? (
-        <p className="text-foreground-500">加载中…</p>
+        <p className="text-muted">加载中…</p>
       ) : (
         <Table columns={cols} rows={data ?? []} empty="还没有套餐" />
       )}

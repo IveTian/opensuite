@@ -1,6 +1,22 @@
-import { Button } from "@heroui/react";
-import { useState, type MouseEvent } from "react";
+import { Avatar, Button, Chip } from "@heroui/react";
+import { useState, type ComponentType, type MouseEvent } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  DownloadIcon,
+  FileIcon,
+  InboxIcon,
+  MailIcon,
+  MoonIcon,
+  PencilIcon,
+  RefreshIcon,
+  SearchIcon,
+  SendIcon,
+  StarFilledIcon,
+  StarIcon,
+  SunIcon,
+  TrashIcon,
+  UserIcon,
+} from "../../components/icons";
 import { useFetch } from "../../hooks/useFetch";
 import { api } from "../../lib/api";
 import { formatBytes, formatDate } from "../../lib/format";
@@ -40,17 +56,24 @@ interface Quota {
 }
 
 const API = import.meta.env.VITE_API_ORIGIN;
-const FOLDERS = [
-  { key: "inbox", label: "收件箱" },
-  { key: "sent", label: "已发送" },
-  { key: "draft", label: "草稿" },
-  { key: "starred", label: "星标" },
-  { key: "trash", label: "回收站" },
-] as const;
+const FOLDERS: { key: string; label: string; icon: ComponentType<{ className?: string }> }[] = [
+  { key: "inbox", label: "收件箱", icon: InboxIcon },
+  { key: "sent", label: "已发送", icon: SendIcon },
+  { key: "draft", label: "草稿", icon: FileIcon },
+  { key: "starred", label: "星标", icon: StarIcon },
+  { key: "trash", label: "回收站", icon: TrashIcon },
+];
 const LIMIT = 50;
 
 function quote(m: MsgDetail): string {
   return `\n\n---------- 原邮件 ----------\n发件人：${m.fromAddress}\n主题：${m.subject ?? ""}\n\n${m.bodyText ?? ""}`;
+}
+
+function initials(value: string | null): string {
+  if (!value) return "?";
+  const local = value.split("@")[0] ?? value;
+  const parts = local.replace(/[._-]+/g, " ").trim().split(/\s+/);
+  return ((parts[0]?.[0] ?? "?") + (parts[1]?.[0] ?? "")).toUpperCase();
 }
 
 export function Mailbox() {
@@ -82,6 +105,7 @@ export function Mailbox() {
   const mailboxes = (addresses ?? []).filter((a) => a.type === "mailbox");
   const items = listData?.items ?? [];
   const total = listData?.total ?? 0;
+  const currentFolder = FOLDERS.find((f) => f.key === folder);
 
   function refreshAll() {
     void refetchList();
@@ -181,13 +205,23 @@ export function Mailbox() {
       : 0;
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full bg-background">
       {/* 侧栏 */}
-      <aside className="flex w-52 flex-col border-r border-default-200 bg-content1 p-3">
-        <div className="mb-3 px-2 text-lg font-bold text-primary">MailFlare</div>
-        <Button variant="primary" className="mb-3" onClick={newCompose}>
-          写邮件
-        </Button>
+      <aside className="hidden w-60 shrink-0 flex-col border-r border-border p-3 sm:flex">
+        <div className="flex items-center gap-2 px-2 py-2">
+          <div className="flex size-7 items-center justify-center rounded-lg bg-accent text-accent-foreground">
+            <MailIcon className="size-4" />
+          </div>
+          <span className="text-base font-semibold text-foreground">MailFlare</span>
+        </div>
+
+        <div className="px-1 py-2">
+          <Button variant="primary" fullWidth onClick={newCompose}>
+            <PencilIcon className="size-4" />
+            写邮件
+          </Button>
+        </div>
+
         <nav className="flex flex-1 flex-col gap-0.5">
           {FOLDERS.map((f) => {
             const n = !counts
@@ -195,20 +229,25 @@ export function Mailbox() {
               : f.key === "inbox"
                 ? counts.unread
                 : counts[f.key as keyof Counts];
+            const active = folder === f.key;
+            const Ico = f.icon;
             return (
               <button
                 key={f.key}
                 onClick={() => switchFolder(f.key)}
                 className={
-                  "flex items-center justify-between rounded-lg px-3 py-2 text-sm " +
-                  (folder === f.key
-                    ? "bg-primary/10 font-medium text-primary"
-                    : "text-foreground-600 hover:bg-default-100")
+                  "flex h-9 items-center gap-3 rounded-xl px-3 text-sm " +
+                  (active
+                    ? "bg-surface font-medium text-foreground shadow-surface"
+                    : "text-muted hover:bg-surface-secondary hover:text-foreground")
                 }
               >
-                <span>{f.label}</span>
+                <Ico className="size-4 shrink-0" />
+                <span className="flex-1 text-left">{f.label}</span>
                 {!!n && (
-                  <span className="rounded-full bg-primary px-1.5 text-xs text-white">{n}</span>
+                  <Chip color="accent" variant="soft" size="sm">
+                    {n}
+                  </Chip>
                 )}
               </button>
             );
@@ -217,108 +256,179 @@ export function Mailbox() {
 
         {/* 配额条 */}
         {quota && (
-          <div className="mt-3 px-1">
-            <div className="mb-1 flex justify-between text-xs text-foreground-500">
-              <span>存储</span>
-              <span>
+          <div className="mt-3 rounded-xl bg-surface-secondary p-3">
+            <div className="mb-1.5 flex items-center justify-between text-xs">
+              <span className="text-muted">存储用量</span>
+              <span className="tabular-nums text-foreground">
                 {formatBytes(quota.usedBytes)} / {formatBytes(quota.storageQuotaBytes)}
               </span>
             </div>
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-default-200">
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-default-soft">
               <div
-                className={"h-full " + (usedPct >= 90 ? "bg-danger" : "bg-primary")}
+                className={"h-full rounded-full " + (usedPct >= 90 ? "bg-danger" : "bg-accent")}
                 style={{ width: `${usedPct}%` }}
               />
             </div>
-            {usedPct >= 90 && (
-              <p className="mt-1 text-xs text-danger">容量即将用尽</p>
-            )}
+            {usedPct >= 90 && <p className="mt-1.5 text-xs text-danger">容量即将用尽</p>}
           </div>
         )}
 
-        <div className="mt-3 flex items-center gap-1">
-          <Button size="sm" variant="ghost" onClick={() => navigate("/")}>
-            个人中心
+        <div className="mt-3 flex flex-col gap-1">
+          <div className="flex gap-1">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="flex-1 justify-start"
+              onClick={() => navigate("/")}
+            >
+              <UserIcon className="size-4" />
+              个人中心
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              isIconOnly
+              aria-label="切换主题"
+              onClick={toggle}
+            >
+              {theme === "dark" ? <MoonIcon className="size-4" /> : <SunIcon className="size-4" />}
+            </Button>
+          </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="justify-start"
+            onClick={simulate}
+            isDisabled={simBusy}
+          >
+            <RefreshIcon className="size-4" />
+            {simBusy ? "模拟中…" : "模拟收信"}
           </Button>
-          <Button size="sm" variant="ghost" onClick={toggle}>
-            {theme === "dark" ? "🌙" : "☀️"}
-          </Button>
+          <a
+            href={`${API}/api/me/messages/export`}
+            className="flex h-8 items-center gap-2 rounded-lg px-3 text-sm text-muted hover:bg-surface-secondary hover:text-foreground"
+          >
+            <DownloadIcon className="size-4" />
+            导出 .mbox
+          </a>
         </div>
-        <Button size="sm" variant="ghost" className="mt-1" onClick={simulate} isDisabled={simBusy}>
-          模拟收信
-        </Button>
-        <a
-          href={`${API}/api/me/messages/export`}
-          className="mt-1 rounded-lg px-3 py-1.5 text-center text-sm text-foreground-600 hover:bg-default-100"
-        >
-          导出 .mbox
-        </a>
       </aside>
 
       {/* 列表 */}
-      <div className="flex w-80 flex-col border-r border-default-200">
-        <div className="border-b border-default-200 p-2">
-          <input
-            value={qInput}
-            onChange={(e) => setQInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && applySearch()}
-            placeholder="搜索主题/发件人…"
-            className="w-full rounded-lg border border-default-200 bg-default-100 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-          />
+      <div className="flex w-full shrink-0 flex-col border-r border-border sm:w-80 lg:w-96">
+        <div className="flex items-center gap-2 px-3 pb-2 pt-3">
+          <div className="relative flex-1">
+            <SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
+            <input
+              value={qInput}
+              onChange={(e) => setQInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && applySearch()}
+              placeholder="搜索主题 / 发件人…"
+              aria-label="搜索邮件"
+              className="w-full rounded-xl border border-border bg-surface-secondary py-2 pl-9 pr-3 text-sm text-foreground placeholder:text-muted focus:border-field-border-focus focus:outline-none focus:ring-2 focus:ring-focus/40"
+            />
+          </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-auto">
+
+        <div className="px-3 pb-2">
+          <h2 className="text-sm font-semibold text-foreground">{currentFolder?.label}</h2>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-auto px-2 pb-2">
           {loading ? (
-            <div className="space-y-2 p-3">
+            <div className="space-y-2 p-1">
               {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="h-12 animate-pulse rounded-lg bg-default-100" />
+                <div key={i} className="h-20 animate-pulse rounded-2xl bg-surface-secondary" />
               ))}
             </div>
           ) : !items.length ? (
-            <p className="p-4 text-sm text-foreground-400">暂无邮件</p>
+            <div className="flex flex-col items-center gap-2 p-10 text-center text-muted">
+              <MailIcon className="size-8 opacity-40" />
+              <p className="text-sm">暂无邮件</p>
+            </div>
           ) : (
-            items.map((m) => (
-              <button
-                key={m.id}
-                onClick={() => openItem(m)}
-                className={
-                  "flex w-full gap-2 border-b border-default-100 px-3 py-3 text-left hover:bg-default-50 " +
-                  (selectedId === m.id ? "bg-default-100" : "")
-                }
-              >
-                <span
-                  onClick={(e) => toggleStar(m, e)}
-                  className={"shrink-0 text-base " + (m.isStarred ? "text-warning" : "text-default-300")}
-                >
-                  {m.isStarred ? "★" : "☆"}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center justify-between gap-2">
-                    <span className={"truncate text-sm " + (m.isRead ? "text-foreground-600" : "font-semibold")}>
-                      {folder === "inbox" || folder === "trash"
-                        ? m.fromAddress
-                        : (m.toAddresses ?? []).join(", ") || "(无收件人)"}
-                    </span>
-                    {!m.isRead && folder === "inbox" && (
-                      <span className="h-2 w-2 shrink-0 rounded-full bg-primary" />
-                    )}
-                  </span>
-                  <span className="block truncate text-sm text-foreground">{m.subject || "(无主题)"}</span>
-                  <span className="block truncate text-xs text-foreground-400">{m.snippet}</span>
-                  <span className="block text-xs text-foreground-400">
-                    {formatDate(m.receivedAt ?? m.sentAt ?? m.createdAt)}
-                  </span>
-                </span>
-              </button>
-            ))
+            <ul className="flex flex-col gap-0.5">
+              {items.map((m) => {
+                const active = selectedId === m.id;
+                const who =
+                  folder === "inbox" || folder === "trash"
+                    ? m.fromAddress
+                    : (m.toAddresses ?? []).join(", ") || "(无收件人)";
+                const unread = !m.isRead && folder === "inbox";
+                return (
+                  <li key={m.id}>
+                    <button
+                      onClick={() => openItem(m)}
+                      className={
+                        "relative flex w-full items-start gap-3 rounded-2xl p-3 text-left " +
+                        (active
+                          ? "bg-surface shadow-surface"
+                          : "hover:bg-surface-secondary")
+                      }
+                    >
+                      <Avatar className="size-9 shrink-0">
+                        <Avatar.Fallback>{initials(who)}</Avatar.Fallback>
+                      </Avatar>
+                      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                        <span className="flex items-center justify-between gap-2">
+                          <span
+                            className={
+                              "truncate text-sm leading-tight " +
+                              (unread ? "font-semibold text-foreground" : "text-foreground")
+                            }
+                          >
+                            {who}
+                          </span>
+                          <span className="flex shrink-0 items-center gap-1.5">
+                            <span className="whitespace-nowrap text-xs text-muted">
+                              {formatDate(m.receivedAt ?? m.sentAt ?? m.createdAt)}
+                            </span>
+                            {unread && <span className="size-1.5 rounded-full bg-accent" />}
+                          </span>
+                        </span>
+                        <span
+                          className={
+                            "truncate text-xs leading-tight " +
+                            (unread ? "font-medium text-foreground" : "text-muted")
+                          }
+                        >
+                          {m.subject || "(无主题)"}
+                        </span>
+                        <span className="truncate pr-6 text-xs leading-tight text-muted">
+                          {m.snippet}
+                        </span>
+                      </span>
+                      <span
+                        role="button"
+                        tabIndex={-1}
+                        aria-label={m.isStarred ? "取消星标" : "星标"}
+                        onClick={(e) => toggleStar(m, e)}
+                        className={
+                          "absolute bottom-3 right-3 " +
+                          (m.isStarred ? "text-warning" : "text-muted opacity-50 hover:opacity-100")
+                        }
+                      >
+                        {m.isStarred ? (
+                          <StarFilledIcon className="size-4" />
+                        ) : (
+                          <StarIcon className="size-4" />
+                        )}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </div>
+
         {/* 分页 */}
         {total > LIMIT && (
-          <div className="flex items-center justify-between border-t border-default-200 px-3 py-2 text-sm">
+          <div className="flex items-center justify-between border-t border-border px-3 py-2 text-sm">
             <Button size="sm" variant="ghost" isDisabled={page === 0} onClick={() => setPage((p) => p - 1)}>
               上一页
             </Button>
-            <span className="text-foreground-500">
+            <span className="tabular-nums text-muted">
               {page * LIMIT + 1}–{Math.min((page + 1) * LIMIT, total)} / {total}
             </span>
             <Button
@@ -334,7 +444,7 @@ export function Mailbox() {
       </div>
 
       {/* 阅读 / 写信 */}
-      <div className="min-w-0 flex-1 overflow-auto p-5">
+      <div className="hidden min-w-0 flex-1 overflow-auto p-6 sm:block">
         {composing ? (
           <Compose
             addresses={mailboxes}
@@ -361,8 +471,11 @@ export function Mailbox() {
             }}
           />
         ) : (
-          <div className="flex h-full items-center justify-center text-foreground-400">
-            选择一封邮件查看，或点击「写邮件」
+          <div className="flex h-full flex-col items-center justify-center gap-3 text-muted">
+            <div className="flex size-14 items-center justify-center rounded-2xl bg-surface-secondary">
+              <MailIcon className="size-7 opacity-60" />
+            </div>
+            <p className="text-sm">选择一封邮件查看，或点击「写邮件」</p>
           </div>
         )}
       </div>

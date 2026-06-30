@@ -2,6 +2,7 @@ import { Button, Input, Label, TextArea, TextField } from "@heroui/react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { NativeSelect } from "../../components/NativeSelect";
 import { Alert } from "../../components/ui";
+import { PaperclipIcon, SendIcon, XIcon } from "../../components/icons";
 import { api, ApiError } from "../../lib/api";
 import { formatBytes } from "../../lib/format";
 
@@ -129,13 +130,15 @@ export function Compose({
   }
 
   return (
-    <form onSubmit={send} className="flex h-full flex-col gap-3">
+    <form onSubmit={send} className="mx-auto flex h-full max-w-3xl flex-col gap-3">
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold">{initial?.replyToMessageId ? "回复" : "写邮件"}</h2>
+        <h2 className="text-lg font-semibold text-foreground">
+          {initial?.replyToMessageId ? "回复" : "写邮件"}
+        </h2>
         <div className="flex items-center gap-2">
-          {savedAt && <span className="text-xs text-foreground-400">已存草稿 {savedAt}</span>}
-          <Button type="button" size="sm" variant="ghost" onClick={onClose}>
-            关闭
+          {savedAt && <span className="text-xs text-muted">已存草稿 {savedAt}</span>}
+          <Button type="button" size="sm" variant="ghost" isIconOnly aria-label="关闭" onClick={onClose}>
+            <XIcon className="size-4" />
           </Button>
         </div>
       </div>
@@ -187,8 +190,9 @@ export function Compose({
       </TextField>
 
       <div>
-        <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-default-200 px-3 py-1.5 text-sm hover:bg-default-50">
-          📎 添加附件
+        <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-border px-3 py-1.5 text-sm text-foreground hover:bg-surface-secondary">
+          <PaperclipIcon className="size-4 text-muted" />
+          添加附件
           <input type="file" multiple className="hidden" onChange={(e) => addFiles(e.target.files)} />
         </label>
         {atts.length > 0 && (
@@ -196,15 +200,16 @@ export function Compose({
             {atts.map((a, i) => (
               <span
                 key={i}
-                className="inline-flex items-center gap-2 rounded-lg bg-default-100 px-2 py-1 text-xs"
+                className="inline-flex items-center gap-2 rounded-xl bg-surface-secondary px-2.5 py-1 text-xs text-foreground"
               >
                 {a.filename} ({formatBytes(a.size)})
                 <button
                   type="button"
-                  className="text-danger"
+                  aria-label="移除附件"
+                  className="text-muted hover:text-danger"
                   onClick={() => setAtts((x) => x.filter((_, j) => j !== i))}
                 >
-                  ✕
+                  <XIcon className="size-3.5" />
                 </button>
               </span>
             ))}
@@ -215,6 +220,7 @@ export function Compose({
       {error && <Alert>{error}</Alert>}
       <div className="flex gap-2">
         <Button type="submit" variant="primary" isDisabled={busy || !fromAddressId}>
+          <SendIcon className="size-4" />
           {busy ? "发送中…" : "发送"}
         </Button>
       </div>

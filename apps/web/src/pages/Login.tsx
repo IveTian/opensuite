@@ -1,7 +1,8 @@
 import { Button, Input, Label, TextField } from "@heroui/react";
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Alert, Panel } from "../components/ui";
+import { Alert } from "../components/ui";
+import { MailIcon } from "../components/icons";
 import { signIn } from "../lib/auth-client";
 
 export function Login() {
@@ -25,40 +26,56 @@ export function Login() {
   }
 
   return (
-    <div className="flex h-full items-center justify-center bg-background p-4">
-      <Panel className="w-full max-w-sm">
-        <h1 className="mb-1 text-2xl font-bold text-primary">MailFlare</h1>
-        <p className="mb-6 text-sm text-foreground-500">登录到你的邮箱系统</p>
-        <form onSubmit={submit} className="flex flex-col gap-4">
-          <TextField>
-            <Label>邮箱</Label>
-            <Input
-              type="email"
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </TextField>
-          <TextField>
-            <Label>密码</Label>
-            <Input
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </TextField>
-          {error && <Alert>{error}</Alert>}
-          <Button type="submit" variant="primary" isDisabled={loading}>
-            {loading ? "登录中…" : "登录"}
-          </Button>
-          <Link to="/register" className="text-center text-sm text-primary">
-            没有账号？去注册
+    <div className="flex min-h-full items-center justify-center bg-background p-4">
+      <div className="w-full max-w-sm">
+        <div className="mb-7 flex flex-col items-center gap-3 text-center">
+          <div className="flex size-12 items-center justify-center rounded-2xl bg-accent text-accent-foreground shadow-surface">
+            <MailIcon className="size-6" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-semibold text-foreground">欢迎回来</h1>
+            <p className="mt-1 text-sm text-muted">登录到你的 MailFlare 邮箱系统</p>
+          </div>
+        </div>
+
+        <div className="rounded-2xl bg-surface p-7 shadow-surface">
+          <form onSubmit={submit} className="flex flex-col gap-4">
+            <TextField>
+              <Label>邮箱</Label>
+              <Input
+                type="email"
+                autoComplete="email"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </TextField>
+            <TextField>
+              <Label>密码</Label>
+              <Input
+                type="password"
+                autoComplete="current-password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </TextField>
+            {error && <Alert>{error}</Alert>}
+            <Button type="submit" variant="primary" fullWidth isDisabled={loading}>
+              {loading ? "登录中…" : "登录"}
+            </Button>
+          </form>
+        </div>
+
+        <p className="mt-5 text-center text-sm text-muted">
+          没有账号？{" "}
+          <Link to="/register" className="font-medium text-accent">
+            立即注册
           </Link>
-        </form>
-      </Panel>
+        </p>
+      </div>
     </div>
   );
 }

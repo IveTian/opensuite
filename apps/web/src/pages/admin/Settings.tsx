@@ -84,7 +84,7 @@ export function Settings() {
             <option value="closed">关闭注册</option>
           </NativeSelect>
 
-          <div className="flex items-center justify-between rounded-lg border border-default-200 px-3 py-2.5">
+          <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
             <span className="text-sm">注册后需管理员审核</span>
             <Switch isSelected={approval} onChange={setApproval} />
           </div>

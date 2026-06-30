@@ -36,7 +36,7 @@ export function Audit() {
       key: "metadata",
       header: "详情",
       render: (r) => (
-        <code className="text-xs text-foreground-500">
+        <code className="text-xs text-muted">
           {r.metadata ? JSON.stringify(r.metadata) : "—"}
         </code>
       ),
@@ -47,7 +47,7 @@ export function Audit() {
     <div>
       <PageHeader title="审计日志" subtitle="后台关键操作记录" />
       {loading ? (
-        <p className="text-foreground-500">加载中…</p>
+        <p className="text-muted">加载中…</p>
       ) : (
         <>
           <Table columns={cols} rows={items} empty="暂无记录" />
@@ -56,7 +56,7 @@ export function Audit() {
               <Button size="sm" variant="ghost" isDisabled={page === 0} onClick={() => setPage((p) => p - 1)}>
                 上一页
               </Button>
-              <span className="text-foreground-500">
+              <span className="text-muted">
                 {page * LIMIT + 1}–{Math.min((page + 1) * LIMIT, total)} / {total}
               </span>
               <Button

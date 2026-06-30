@@ -1,3 +1,4 @@
+import { Spinner } from "@heroui/react";
 import { Navigate, Outlet } from "react-router-dom";
 import { useSession } from "../lib/auth-client";
 
@@ -7,7 +8,8 @@ export function ProtectedRoute({ requireAdmin }: { requireAdmin?: boolean }) {
 
   if (isPending) {
     return (
-      <div className="flex h-full items-center justify-center text-foreground-500">
+      <div className="flex h-full items-center justify-center gap-2 text-sm text-muted">
+        <Spinner />
         加载中…
       </div>
     );

@@ -15,7 +15,7 @@ interface UsageRow {
 function Stat({ label, value }: { label: string; value: string | number }) {
   return (
     <Panel>
-      <div className="text-sm text-foreground-500">{label}</div>
+      <div className="text-sm text-muted">{label}</div>
       <div className="mt-1 text-2xl font-semibold text-foreground">{value}</div>
     </Panel>
   );
@@ -38,7 +38,7 @@ export function Dashboard() {
       <PageHeader title="仪表盘" subtitle="系统概览" />
       {error && <p className="text-danger">{error}</p>}
       {loading || !stats ? (
-        <p className="text-foreground-500">加载中…</p>
+        <p className="text-muted">加载中…</p>
       ) : (
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
           <Stat label="用户数" value={stats.userCount} />

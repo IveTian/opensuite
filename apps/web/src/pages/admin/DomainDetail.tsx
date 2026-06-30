@@ -86,54 +86,54 @@ export function DomainDetail({ domain, onChanged }: { domain: DomainRow; onChang
       </div>
 
       {loading || !dns ? (
-        <p className="text-sm text-foreground-500">查询 DNS 中…</p>
+        <p className="text-sm text-muted">查询 DNS 中…</p>
       ) : (
         <div className="space-y-3 text-sm">
-          <div className="rounded-lg border border-default-200 p-3">
+          <div className="rounded-lg border border-border p-3">
             <div className="mb-1 flex items-center gap-2 font-medium">
               MX <OkBadge ok={dns.check.mx.ok} />
             </div>
-            <div className="text-foreground-500">应添加（任选其一组）：</div>
+            <div className="text-muted">应添加（任选其一组）：</div>
             {dns.expected.mx.map((r, i) => (
-              <code key={i} className="block text-xs text-foreground-600">
+              <code key={i} className="block text-xs text-muted">
                 {r.name} MX {r.priority} {r.value}
               </code>
             ))}
             {!!dns.check.mx.records.length && (
-              <div className="mt-1 text-xs text-foreground-400">
+              <div className="mt-1 text-xs text-muted">
                 当前：{dns.check.mx.records.join("; ")}
               </div>
             )}
           </div>
 
-          <div className="rounded-lg border border-default-200 p-3">
+          <div className="rounded-lg border border-border p-3">
             <div className="mb-1 flex items-center gap-2 font-medium">
               SPF <OkBadge ok={dns.check.spf.ok} />
               {dns.check.spf.ok && !dns.check.spf.cloudflare && (
                 <Badge tone="warning">未包含 Cloudflare</Badge>
               )}
             </div>
-            <code className="block text-xs text-foreground-600">
+            <code className="block text-xs text-muted">
               {dns.expected.spf.name} TXT &quot;{dns.expected.spf.value}&quot;
             </code>
             {dns.check.spf.record && (
-              <div className="mt-1 text-xs text-foreground-400">当前：{dns.check.spf.record}</div>
+              <div className="mt-1 text-xs text-muted">当前：{dns.check.spf.record}</div>
             )}
           </div>
 
-          <div className="rounded-lg border border-default-200 p-3">
+          <div className="rounded-lg border border-border p-3">
             <div className="mb-1 flex items-center gap-2 font-medium">
               DMARC <OkBadge ok={dns.check.dmarc.ok} />
             </div>
-            <code className="block text-xs text-foreground-600">
+            <code className="block text-xs text-muted">
               {dns.expected.dmarc.name} TXT &quot;{dns.expected.dmarc.value}&quot;
             </code>
           </div>
 
-          <div className="rounded-lg border border-default-200 p-3">
+          <div className="rounded-lg border border-border p-3">
             <div className="flex items-center gap-2 font-medium">
               DKIM <OkBadge ok={dns.check.dkim.ok} />
-              <span className="text-xs font-normal text-foreground-400">
+              <span className="text-xs font-normal text-muted">
                 （Cloudflare onboarding 后自动配置 cf2024-1 选择器）
               </span>
             </div>
@@ -142,7 +142,7 @@ export function DomainDetail({ domain, onChanged }: { domain: DomainRow; onChang
       )}
 
       {/* Catch-all */}
-      <div className="mt-4 rounded-lg border border-default-200 p-3">
+      <div className="mt-4 rounded-lg border border-border p-3">
         <div className="mb-2 flex items-center justify-between">
           <span className="font-medium">Catch-all（接收该域下所有未匹配地址）</span>
           <Switch isSelected={caEnabled} onChange={setCaEnabled} />

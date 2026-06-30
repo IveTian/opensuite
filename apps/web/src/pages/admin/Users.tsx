@@ -128,7 +128,7 @@ export function Users() {
       {editing && (
         <Panel className="mb-5">
           <form onSubmit={saveQuota} className="flex flex-wrap items-end gap-3">
-            <div className="text-sm text-foreground-600">
+            <div className="text-sm text-muted">
               分配配额：<span className="font-medium">{editing.email}</span>
             </div>
             <TextField className="w-32">
@@ -162,7 +162,7 @@ export function Users() {
       )}
 
       {loading ? (
-        <p className="text-foreground-500">加载中…</p>
+        <p className="text-muted">加载中…</p>
       ) : (
         <Table columns={cols} rows={data ?? []} empty="还没有用户" />
       )}

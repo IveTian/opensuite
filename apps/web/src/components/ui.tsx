@@ -1,19 +1,17 @@
+import { Chip } from "@heroui/react";
 import type { ReactNode } from "react";
+import { AlertTriangleIcon, CheckIcon } from "./icons";
 
-/** 卡片面板（套用 HeroUI 设计令牌的表面） */
+/** 卡片面板（HeroUI v3 surface 表面 + 内置阴影） */
 export function Panel({
   children,
-  className,
+  className = "",
 }: {
   children: ReactNode;
   className?: string;
 }) {
   return (
-    <div
-      className={
-        "rounded-xl border border-default-200 bg-content1 p-5 " + (className ?? "")
-      }
-    >
+    <div className={`rounded-2xl bg-surface p-5 shadow-surface ${className}`}>
       {children}
     </div>
   );
@@ -30,10 +28,10 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <div className="mb-5 flex items-end justify-between gap-4">
+    <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
       <div>
         <h1 className="text-xl font-semibold text-foreground">{title}</h1>
-        {subtitle && <p className="mt-0.5 text-sm text-foreground-500">{subtitle}</p>}
+        {subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}
       </div>
       {actions && <div className="flex items-center gap-2">{actions}</div>}
     </div>
@@ -48,11 +46,17 @@ export function Alert({
   kind?: "danger" | "success";
   children: ReactNode;
 }) {
-  const cls =
+  const styles =
     kind === "success"
-      ? "bg-success/10 text-success"
-      : "bg-danger/10 text-danger";
-  return <div className={"rounded-lg px-3 py-2 text-sm " + cls}>{children}</div>;
+      ? "bg-success-soft text-success-soft-foreground"
+      : "bg-danger-soft text-danger-soft-foreground";
+  const Icon = kind === "success" ? CheckIcon : AlertTriangleIcon;
+  return (
+    <div className={`flex items-start gap-2 rounded-xl px-3 py-2.5 text-sm ${styles}`}>
+      <Icon className="mt-0.5 size-4 shrink-0" />
+      <span className="min-w-0">{children}</span>
+    </div>
+  );
 }
 
 export interface Column<T> {
@@ -61,7 +65,7 @@ export interface Column<T> {
   render?: (row: T) => ReactNode;
 }
 
-/** 通用数据表（HTML + Tailwind，套用 HeroUI 令牌） */
+/** 通用数据表（HeroUI v3 令牌） */
 export function Table<T>({
   columns,
   rows,
@@ -72,12 +76,12 @@ export function Table<T>({
   empty?: string;
 }) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-default-200">
+    <div className="overflow-x-auto rounded-2xl bg-surface shadow-surface">
       <table className="w-full text-sm">
-        <thead className="bg-default-100 text-left text-foreground-600">
-          <tr>
+        <thead className="text-left text-muted">
+          <tr className="border-b border-separator">
             {columns.map((c) => (
-              <th key={c.key} className="px-4 py-2.5 font-medium whitespace-nowrap">
+              <th key={c.key} className="px-4 py-3 font-medium whitespace-nowrap">
                 {c.header}
               </th>
             ))}
@@ -88,16 +92,19 @@ export function Table<T>({
             <tr>
               <td
                 colSpan={columns.length}
-                className="px-4 py-10 text-center text-foreground-400"
+                className="px-4 py-12 text-center text-muted"
               >
                 {empty}
               </td>
             </tr>
           ) : (
             rows.map((row, i) => (
-              <tr key={i} className="border-t border-default-200 hover:bg-default-50">
+              <tr
+                key={i}
+                className="border-b border-separator/60 last:border-0 transition-colors hover:bg-surface-secondary"
+              >
                 {columns.map((c) => (
-                  <td key={c.key} className="px-4 py-2.5 align-middle">
+                  <td key={c.key} className="px-4 py-3 align-middle">
                     {c.render
                       ? c.render(row)
                       : String((row as Record<string, unknown>)[c.key] ?? "")}
@@ -112,24 +119,20 @@ export function Table<T>({
   );
 }
 
-/** 状态徽标 */
+type BadgeTone = "default" | "success" | "warning" | "danger" | "primary";
+
+/** 状态徽标（基于 HeroUI Chip 的 soft 变体） */
 export function Badge({
   children,
   tone = "default",
 }: {
   children: ReactNode;
-  tone?: "default" | "success" | "warning" | "danger" | "primary";
+  tone?: BadgeTone;
 }) {
-  const map: Record<string, string> = {
-    default: "bg-default-200 text-foreground-700",
-    success: "bg-success/15 text-success",
-    warning: "bg-warning/15 text-warning",
-    danger: "bg-danger/15 text-danger",
-    primary: "bg-primary/15 text-primary",
-  };
+  const color = tone === "primary" ? "accent" : tone;
   return (
-    <span className={"inline-block rounded-full px-2 py-0.5 text-xs " + map[tone]}>
+    <Chip color={color} variant="soft" size="sm">
       {children}
-    </span>
+    </Chip>
   );
 }
