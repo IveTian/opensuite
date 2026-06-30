@@ -6,13 +6,15 @@ import type { RegistrationMode, Role } from "./constants.js";
 
 /** 注册页读取的公开配置 */
 export interface RegistrationConfig {
-  /** 是否允许任何人注册（open 或 invite_only 时为 true，closed 为 false） */
+  /** 是否允许任何人注册（open 或 invite_only 时为 true，closed 为 false；bootstrap 时恒 true） */
   enabled: boolean;
   mode: RegistrationMode;
   /** 是否必须填写邀请码 */
   requireInviteCode: boolean;
   /** 公开注册默认域名（用于展示将分配的邮箱后缀） */
   defaultDomain: string | null;
+  /** 系统零用户：首位注册者将成为管理员，免邀请码 */
+  bootstrap: boolean;
 }
 
 /** 邀请码预校验结果 */

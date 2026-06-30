@@ -41,6 +41,9 @@ export const publicRoutes = new Hono<AppEnv>()
     });
     const mode = (settings?.registrationMode ?? "closed") as RegistrationMode;
 
+    // 零用户：首位注册者将成为管理员，免邀请码、不受 closed 限制
+    const bootstrap = (await db.$count(user)) === 0;
+
     let defaultDomain: string | null = null;
     if (settings?.signupDefaultDomainId) {
       const d = await db.query.domains.findFirst({
@@ -50,10 +53,11 @@ export const publicRoutes = new Hono<AppEnv>()
     }
 
     const body: RegistrationConfig = {
-      enabled: mode !== "closed",
+      enabled: bootstrap || mode !== "closed",
       mode,
-      requireInviteCode: mode === "invite_only",
+      requireInviteCode: !bootstrap && mode === "invite_only",
       defaultDomain,
+      bootstrap,
     };
     return c.json(body);
   })

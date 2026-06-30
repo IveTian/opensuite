@@ -54,6 +54,13 @@ export function Register() {
           <Alert kind="success">注册成功，等待管理员审核后即可登录。</Alert>
         ) : (
           <>
+            {config?.bootstrap && (
+              <div className="mb-4">
+                <Alert kind="success">
+                  系统尚无用户：首位注册者将成为管理员，无需邀请码。
+                </Alert>
+              </div>
+            )}
             {config?.defaultDomain && (
               <p className="mb-4 text-sm text-foreground-500">
                 注册后将在 @{config.defaultDomain} 下分配邮箱。
