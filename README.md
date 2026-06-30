@@ -41,8 +41,11 @@ pnpm install
 
 # 2) 创建 Cloudflare 资源（把输出的 id 填回 apps/api/wrangler.jsonc 的 hyperdrive.id）
 wrangler r2 bucket create mailflare-raw-emails
-wrangler hyperdrive create mailflare-hd \
-  --connection-string="postgres://<neon-user>:<pw>@<neon-host>/<db>?sslmode=require"
+# 重要：必须 --caching-disabled！本系统是 auth/事务型读写，Hyperdrive 默认会缓存 SELECT(~60s)，
+# 会导致「注册后立即登录」读到过期的空结果而报 Invalid email or password。
+wrangler hyperdrive create mailflare-hd --caching-disabled \
+  --connection-string="postgres://<user>:<pw>@<host>/<db>?sslmode=require"
+# 已存在的 Hyperdrive 用：wrangler hyperdrive update <id> --caching-disabled
 
 # 3) 数据库迁移 + 种子（用 Neon 直连串）
 cd packages/db && cp .env.example .env   # 填入 DATABASE_URL（Neon 直连串）
@@ -92,6 +95,7 @@ pnpm --filter @mailflare/web deploy
 
 ## 关键约定
 
+- **Hyperdrive 必须关闭查询缓存**（`--caching-disabled`）：auth 是读写一致敏感场景，默认缓存会让「注册后立即登录」读到过期空结果，报 `Invalid email or password`（账号其实已建好）。`wrangler hyperdrive update <id> --caching-disabled`。
 - **Hyperdrive 仅 Worker 运行时可用**：所有本机工具（drizzle-kit / better-auth CLI）一律用 Neon **直连串** `DATABASE_URL`，切勿误用 Hyperdrive 串。
 - **Better Auth 只拥有** `user/session/account/verification` 四张表；业务表自管，经 `userId` 外键关联。
 - **认证表 schema** 为手写（`packages/db/src/schema/auth.ts`），对齐 admin 插件 + additionalFields；改认证配置后可用 `pnpm auth:generate` 重新生成。
