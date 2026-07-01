@@ -104,6 +104,16 @@ export function Contacts() {
     navigate("/mail", { state: { compose: { to: email } } });
   }
 
+  function inviteToCalendar(view: ContactView) {
+    navigate("/calendar", {
+      state: {
+        newEvent: {
+          attendees: [{ email: view.email, displayName: view.name }],
+        },
+      },
+    });
+  }
+
   async function addOrgToContacts(entry: DirectoryEntry) {
     setErr("");
     try {
@@ -300,6 +310,7 @@ export function Contacts() {
                 view={detailView}
                 onClose={() => setSelected(null)}
                 onWriteMail={() => writeMail(detailView.email)}
+                onInvite={() => inviteToCalendar(detailView)}
                 onAddToContacts={
                   selected.kind === "org"
                     ? () => addOrgToContacts(selected.entry)

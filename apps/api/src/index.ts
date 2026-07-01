@@ -3,9 +3,11 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { emailHandler } from "./email/handler.js";
 import type { AppEnv, Bindings } from "./env.js";
+import { runCalendarReminders } from "./lib/calendar-reminders.js";
 import { runDailyMaintenance } from "./lib/cron.js";
 import { contextMiddleware } from "./middleware/context.js";
 import { adminRoutes } from "./routes/admin/index.js";
+import { calendarRoutes } from "./routes/calendar.js";
 import { contactRoutes } from "./routes/contacts.js";
 import { meRoutes } from "./routes/me.js";
 import { publicRoutes } from "./routes/public.js";
@@ -46,6 +48,7 @@ app.on(["GET", "POST"], "/api/auth/*", (c) => c.var.auth.handler(c.req.raw));
 app.route("/api/public", publicRoutes);
 app.route("/api/me", meRoutes);
 app.route("/api/contacts", contactRoutes);
+app.route("/api/calendar", calendarRoutes);
 app.route("/api/admin", adminRoutes);
 
 // 导出供前端做 RPC 类型推断
@@ -58,12 +61,17 @@ export default {
   fetch: app.fetch,
   email: (message: ForwardableEmailMessage, env: Bindings, ctx: ExecutionContext) =>
     emailHandler(message, env, ctx),
-  // 每日维护（Cron）
-  scheduled: async (_controller: ScheduledController, env: Bindings, ctx: ExecutionContext) => {
+  // Cron：按触发表达式分派（每日维护 / 日历提醒）
+  scheduled: async (controller: ScheduledController, env: Bindings, ctx: ExecutionContext) => {
     const { db, client } = await createDb(env.HYPERDRIVE.connectionString);
     try {
-      const r = await runDailyMaintenance(db, new Date());
-      console.log("每日维护完成", r);
+      if (controller.cron === "*/5 * * * *") {
+        const r = await runCalendarReminders(db, env, new Date());
+        console.log("日历提醒扫描完成", r);
+      } else {
+        const r = await runDailyMaintenance(db, new Date());
+        console.log("每日维护完成", r);
+      }
     } finally {
       ctx.waitUntil(client.end());
     }

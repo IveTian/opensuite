@@ -41,3 +41,41 @@ export const BYTES_PER_GB = 1024 * BYTES_PER_MB;
 
 /** 系统设置固定单行主键 */
 export const SYSTEM_SETTINGS_ID = "global";
+
+// ----------------------- 日历 -----------------------
+
+/** 日历本类型：个人 / 部门 / 手动共享 */
+export const CALENDAR_TYPES = ["personal", "department", "shared"] as const;
+export type CalendarType = (typeof CALENDAR_TYPES)[number];
+
+/** 日历共享成员角色（权限从低到高：viewer < editor < owner） */
+export const CALENDAR_MEMBER_ROLES = ["viewer", "editor", "owner"] as const;
+export type CalendarMemberRole = (typeof CALENDAR_MEMBER_ROLES)[number];
+
+/** 事件状态（对齐 iCalendar STATUS） */
+export const EVENT_STATUSES = ["confirmed", "tentative", "cancelled"] as const;
+export type EventStatus = (typeof EVENT_STATUSES)[number];
+
+/** 参与者角色 */
+export const ATTENDEE_ROLES = ["required", "optional"] as const;
+export type AttendeeRole = (typeof ATTENDEE_ROLES)[number];
+
+/** 参与者回执状态（对齐 iCalendar PARTSTAT） */
+export const ATTENDEE_PARTSTATS = ["needs-action", "accepted", "declined", "tentative"] as const;
+export type AttendeePartstat = (typeof ATTENDEE_PARTSTATS)[number];
+
+/** 提醒方式：站内实时弹窗 / 邮件 */
+export const REMINDER_METHODS = ["popup", "email"] as const;
+export type ReminderMethod = (typeof REMINDER_METHODS)[number];
+
+/** iCalendar METHOD（出/入站 .ics 用） */
+export const ICAL_METHODS = ["REQUEST", "REPLY", "CANCEL"] as const;
+export type IcalMethod = (typeof ICAL_METHODS)[number];
+
+/** 重复规则频率（RRULE FREQ 子集） */
+export const RRULE_FREQS = ["DAILY", "WEEKLY", "MONTHLY", "YEARLY"] as const;
+export type RruleFreq = (typeof RRULE_FREQS)[number];
+
+/** 编辑/删除重复事件的作用范围 */
+export const EVENT_EDIT_SCOPES = ["this", "following", "all"] as const;
+export type EventEditScope = (typeof EVENT_EDIT_SCOPES)[number];

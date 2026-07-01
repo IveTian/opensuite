@@ -10,10 +10,13 @@
   "observability": {
     "enabled": true
   },
-  // 每日维护：重置发信日计数、过期邀请码（UTC 0 点）
+  // Cron 触发器：
+  //  - "0 0 * * *"   每日维护（重置发信日计数、过期邀请码，UTC 0 点）
+  //  - "*/5 * * * *" 日历提醒扫描（每 5 分钟，派发站内/邮件提醒）
   "triggers": {
     "crons": [
-      "0 0 * * *"
+      "0 0 * * *",
+      "*/5 * * * *"
     ]
   },
   // Hyperdrive：把 <hyperdrive-id> 替换为 `wrangler hyperdrive create` 输出的 id。

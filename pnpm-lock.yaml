@@ -101,12 +101,18 @@ importers:
       hono:
         specifier: 'catalog:'
         version: 4.12.27
+      ical.js:
+        specifier: ^2.2.1
+        version: 2.2.1
       pg:
         specifier: 'catalog:'
         version: 8.22.0
       postal-mime:
         specifier: ^2.7.5
         version: 2.7.5
+      rrule:
+        specifier: ^2.8.1
+        version: 2.8.1
       zod:
         specifier: 'catalog:'
         version: 4.4.3
@@ -2047,6 +2053,9 @@ packages:
     resolution: {integrity: sha512-1yrb/+w6HWQJrUCLkJ2IF5jNIPvvFkblV5RNOYl6bV+OA6p9GLcMpHFFGTosSvHvcAUibuUukRqhlYI4z32C7Q==}
     engines: {node: '>=16.9.0'}
 
+  ical.js@2.2.1:
+    resolution: {integrity: sha512-yK/UlPbEs316igb/tjRgbFA8ZV75rCsBJp/hWOatpyaPNlgw0dGDmU+FoicOcwX4xXkeXOkYiOmCqNPFpNPkQg==}
+
   ieee754@1.2.1:
     resolution: {integrity: sha512-dcyqhDvX1C46lXZcVqCpK+FtMRQVdIMN6/Df5js2zouUsqG7I6sFxitIC+7KYK29KdXOLHdu9zL4sFnoVQnqaA==}
 
@@ -2419,6 +2428,9 @@ packages:
 
   rou3@0.7.12:
     resolution: {integrity: sha512-iFE4hLDuloSWcD7mjdCDhx2bKcIsYbtOTpfH5MHHLSKMOUyjqQXTeZVa289uuwEGEKFoE/BAPbhaU4B774nceg==}
+
+  rrule@2.8.1:
+    resolution: {integrity: sha512-hM3dHSBMeaJ0Ktp7W38BJZ7O1zOgaFEsn41PDk+yHoEtfLV+PoJt9E9xAlZiWgf/iqEqionN0ebHFZIDAp+iGw==}
 
   safe-buffer@5.2.1:
     resolution: {integrity: sha512-rp3So07KcdmmKbGvgaNxQSJr7bGVSVk5S9Eq1F+ppbRo70+YeaDxkw5Dd8NPN+GD6bjnYm2VuPuCXmpuYvmCXQ==}
@@ -4023,6 +4035,8 @@ snapshots:
 
   hono@4.12.27: {}
 
+  ical.js@2.2.1: {}
+
   ieee754@1.2.1:
     optional: true
 
@@ -4461,6 +4475,10 @@ snapshots:
   rope-sequence@1.3.4: {}
 
   rou3@0.7.12: {}
+
+  rrule@2.8.1:
+    dependencies:
+      tslib: 2.8.1
 
   safe-buffer@5.2.1:
     optional: true

@@ -1,10 +1,12 @@
 import { Button } from "@heroui/react";
 import DOMPurify from "dompurify";
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Badge } from "../../components/ui";
 import { PersonAvatar, useAvatars } from "../../components/PersonAvatar";
 import {
   ArchiveIcon,
+  CalendarIcon,
   ForwardIcon,
   ImageIcon,
   MailOpenIcon,
@@ -222,6 +224,7 @@ export function MessageView({
   onForward: (m: MsgDetail) => void;
   onChanged: () => void;
 }) {
+  const navigate = useNavigate();
   const { data: m, refetch } = useFetch<MsgDetail>(`/api/me/messages/${messageId}`);
   const { data: thread } = useFetch<ThreadItem[]>(`/api/me/messages/${messageId}/thread`);
   const avatarFor = useAvatars(m ? [m.fromAddress] : []);
@@ -265,6 +268,21 @@ export function MessageView({
   const others = (thread ?? []).filter((t) => t.id !== m.id);
   const senderName = nameOf(m.fromAddress) || m.fromName;
 
+  function createEvent() {
+    const attendees = m!.fromAddress
+      ? [{ email: m!.fromAddress, displayName: senderName ?? null }]
+      : [];
+    navigate("/calendar", {
+      state: {
+        newEvent: {
+          title: m!.subject || "",
+          description: (m!.bodyText || "").slice(0, 2000),
+          attendees,
+        },
+      },
+    });
+  }
+
   return (
     <div className="mx-auto max-w-3xl">
       <div className="mb-4 flex items-start justify-between gap-4">
@@ -284,6 +302,10 @@ export function MessageView({
           <Button size="sm" variant="ghost" onClick={() => onForward(m)}>
             <ForwardIcon className="size-4" />
             转发
+          </Button>
+          <Button size="sm" variant="ghost" onClick={createEvent}>
+            <CalendarIcon className="size-4" />
+            创建事件
           </Button>
           {m.folder !== "archive" && m.folder !== "trash" && (
             <Button size="sm" variant="ghost" onClick={archive}>

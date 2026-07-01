@@ -50,6 +50,13 @@
       "when": 1782887381055,
       "tag": "0006_smart_lionheart",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1782895761063,
+      "tag": "0007_quiet_turbo",
+      "breakpoints": true
     }
   ]
 }

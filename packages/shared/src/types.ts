@@ -1,4 +1,13 @@
-import type { RegistrationMode, Role } from "./constants.js";
+import type {
+  AttendeePartstat,
+  AttendeeRole,
+  CalendarMemberRole,
+  CalendarType,
+  EventStatus,
+  RegistrationMode,
+  ReminderMethod,
+  Role,
+} from "./constants.js";
 
 /**
  * 跨端共享的 API DTO 类型（与数据库行无强绑定，便于前端消费）。
@@ -113,3 +122,76 @@ export interface PersonalContact {
 
 /** 邮件视图用：邮箱地址（小写）→ 显示名。个人别名优先，其次组织目录名 */
 export type ContactNameMap = Record<string, string>;
+
+// ----------------------- 日历 -----------------------
+
+/** 日历本（含当前用户对它的权限角色） */
+export interface Calendar {
+  id: string;
+  name: string;
+  color: string | null;
+  type: CalendarType;
+  ownerUserId: string | null;
+  departmentId: string | null;
+  departmentName: string | null;
+  isDefault: boolean;
+  isVisible: boolean;
+  /** 当前用户对该日历的权限（owner 可管理成员/删日历） */
+  role: CalendarMemberRole;
+}
+
+/** 事件参与者 + RSVP 状态 */
+export interface EventAttendee {
+  id: string;
+  userId: string | null;
+  email: string;
+  displayName: string | null;
+  role: AttendeeRole;
+  isOrganizer: boolean;
+  partstat: AttendeePartstat;
+  respondedAt: string | null;
+}
+
+/** 事件提醒项 */
+export interface EventReminder {
+  minutesBefore: number;
+  method: ReminderMethod;
+}
+
+/**
+ * 日历事件。列表接口（GET /events?from&to）返回的是**展开后的实例**：
+ * 主事件字段照带，另附本次 occurrence 的起止（occurrenceStart/occurrenceEnd）。
+ */
+export interface CalendarEvent {
+  id: string;
+  calendarId: string;
+  uid: string;
+  title: string;
+  description: string | null;
+  location: string | null;
+  color: string | null;
+  allDay: boolean;
+  /** 主事件的起止（ISO 8601） */
+  startsAt: string;
+  endsAt: string;
+  timezone: string;
+  rrule: string | null;
+  status: EventStatus;
+  sequence: number;
+  organizerEmail: string | null;
+  reminders: EventReminder[];
+  attendees?: EventAttendee[];
+  /** 展开实例：本次 occurrence 起止；非重复事件与 startsAt/endsAt 相同 */
+  occurrenceStart: string;
+  occurrenceEnd: string;
+  /** 该实例是否重复系列的一份子 */
+  isRecurring: boolean;
+}
+
+/** 日历共享成员 */
+export interface CalendarMember {
+  userId: string;
+  name: string;
+  email: string;
+  role: CalendarMemberRole;
+}
