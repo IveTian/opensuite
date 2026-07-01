@@ -30,7 +30,8 @@ body {
 }
 
 .safe-top {
-  padding-top: var(--safe-top);
+  /* 用 margin 提供刘海安全区，避免抢占元素自身的 padding-top（否则会盖掉 py-* 的顶部内边距，导致桌面端内容贴顶） */
+  margin-top: var(--safe-top);
 }
 
 .safe-bottom {
@@ -51,7 +52,7 @@ body {
 
 @media (min-width: 640px) {
   .safe-top {
-    padding-top: 0;
+    margin-top: 0;
   }
 
   .safe-bottom,
