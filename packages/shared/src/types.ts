@@ -15,12 +15,12 @@ import type {
 
 /** 注册页读取的公开配置 */
 export interface RegistrationConfig {
-  /** 是否允许任何人注册（open 或 invite_only 时为 true，closed 为 false；bootstrap 时恒 true） */
+  /** 是否允许公开注册；当前仅系统零用户引导时为 true */
   enabled: boolean;
   mode: RegistrationMode;
-  /** 是否必须填写邀请码 */
+  /** 兼容旧注册页；管理员邀请流程不使用邀请码 */
   requireInviteCode: boolean;
-  /** 公开注册默认域名（用于展示将分配的邮箱后缀） */
+  /** 兼容旧注册页；管理员邀请流程在后台选择域名 */
   defaultDomain: string | null;
   /** 系统零用户：首位注册者将成为管理员，免邀请码 */
   bootstrap: boolean;
@@ -46,6 +46,10 @@ export interface MailboxAccount {
   canSend: boolean;
   /** 自定义发信人显示名 */
   senderName: string | null;
+  /** 公共邮箱签名；个人邮箱为空 */
+  sharedSignatureHtml?: string | null;
+  /** 使用公共邮箱发信时是否禁用个人签名 */
+  sharedDisablePersonalSignature?: boolean;
 }
 
 /** 邀请码预校验结果 */

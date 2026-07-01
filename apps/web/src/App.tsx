@@ -3,6 +3,7 @@ import { AdminLayout } from "./components/AdminLayout";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { Login } from "./pages/Login";
 import { Register } from "./pages/Register";
+import { Setup } from "./pages/Setup";
 import { Home } from "./pages/Home";
 import { Profile } from "./pages/Profile";
 import { Contacts } from "./pages/contacts/Contacts";
@@ -40,6 +41,7 @@ export function App() {
 
           {/* 管理后台（需管理员） */}
           <Route element={<ProtectedRoute requireAdmin />}>
+            <Route path="/setup" element={<Setup />} />
             <Route path="/admin" element={<AdminLayout />}>
               <Route index element={<Dashboard />} />
               <Route path="domains" element={<Domains />} />

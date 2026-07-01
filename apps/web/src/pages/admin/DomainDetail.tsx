@@ -79,7 +79,7 @@ export function DomainDetail({ domain, onChanged }: { domain: DomainRow; onChang
   return (
     <Panel className="mt-4">
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="font-semibold">DNS 与投递设置 · {domain.name}</h3>
+        <h3 className="font-semibold">验证收信域名 · {domain.name}</h3>
         <Button size="sm" variant="primary" onClick={verify} isDisabled={verifying}>
           {verifying ? "校验中…" : "校验 DNS"}
         </Button>

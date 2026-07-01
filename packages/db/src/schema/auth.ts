@@ -28,6 +28,7 @@ export const user = pgTable("user", {
 
   // 我们通过 user.additionalFields 声明的业务字段
   approvalStatus: text("approvalStatus").notNull().default("active"),
+  externalEmail: text("externalEmail"),
   locale: text("locale"),
 });
 

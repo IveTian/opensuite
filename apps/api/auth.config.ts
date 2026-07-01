@@ -21,6 +21,7 @@ export const auth = betterAuth({
   user: {
     additionalFields: {
       approvalStatus: { type: "string", defaultValue: "active", input: false },
+      externalEmail: { type: "string", required: false, input: false },
       locale: { type: "string", required: false },
     },
   },

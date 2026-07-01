@@ -1,8 +1,9 @@
 import { and, eq } from "drizzle-orm";
 import type { Email } from "postal-mime";
-import { calendarEvents, calendars, eventAttendees, mailboxMembers } from "@mailflare/db";
+import { calendarEvents, calendars, eventAttendees } from "@mailflare/db";
 import type { Database } from "@mailflare/db";
 import { parseIcs, type ParsedIcs } from "./ical.js";
+import { sharedMailboxRecipientUserIds } from "./mailbox-access.js";
 
 /**
  * 入站 .ics 处理：从入站邮件的 text/calendar 附件解析 iCalendar，按 METHOD 分派：
@@ -53,11 +54,7 @@ async function targetUserIds(
 ): Promise<string[]> {
   if (deliveredTo.userId) return [deliveredTo.userId];
   if (deliveredTo.type === "shared") {
-    const members = await db
-      .select({ userId: mailboxMembers.userId })
-      .from(mailboxMembers)
-      .where(eq(mailboxMembers.addressId, deliveredTo.id));
-    return members.map((m) => m.userId);
+    return sharedMailboxRecipientUserIds(db, deliveredTo.id);
   }
   return [];
 }

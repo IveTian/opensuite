@@ -47,17 +47,15 @@ export type SignInInput = z.infer<typeof signInSchema>;
 export const signUpSchema = z
   .object({
     name: z.string().trim().min(1, "请填写昵称").max(64),
-    /** 普通注册：用户名（邮箱本地部分），服务端按注册域名拼成 username@域名 作为登录身份与主邮箱 */
-    username: localPart.optional(),
     /** 首位管理员引导：系统尚无域名，用外部邮箱注册登录 */
     email: z.string().trim().email("邮箱格式不合法").optional(),
     password: z.string().min(8, "密码至少 8 位").max(128),
-    /** 仅邀请码模式需要 */
+    /** 兼容旧客户端；首位管理员引导不会使用邀请码 */
     inviteCode: z.string().trim().min(1).max(64).optional(),
   })
-  .refine((d) => Boolean(d.username) || Boolean(d.email), {
-    message: "请填写用户名",
-    path: ["username"],
+  .refine((d) => Boolean(d.email), {
+    message: "请填写邮箱",
+    path: ["email"],
   });
 export type SignUpInput = z.infer<typeof signUpSchema>;
 
@@ -94,6 +92,29 @@ export const addMailboxMemberSchema = z.object({
   canSend: z.boolean().optional(),
 });
 export type AddMailboxMemberInput = z.infer<typeof addMailboxMemberSchema>;
+
+/** 公共邮箱：更新显式成员权限 */
+export const updateMailboxMemberSchema = z.object({
+  canSend: z.boolean(),
+});
+export type UpdateMailboxMemberInput = z.infer<typeof updateMailboxMemberSchema>;
+
+/** 部门开通公共邮箱 */
+export const setDepartmentMailboxSchema = z.object({
+  addressId: z.string().uuid(),
+  defaultCanSend: z.boolean().default(false),
+});
+export type SetDepartmentMailboxInput = z.infer<typeof setDepartmentMailboxSchema>;
+
+/** 公共邮箱发信配置 */
+export const updateSharedAddressSettingsSchema = z.object({
+  senderName: z.string().trim().max(120).nullable().optional(),
+  sharedSignatureHtml: z.string().max(20000).nullable().optional(),
+  sharedDisablePersonalSignature: z.boolean().optional(),
+});
+export type UpdateSharedAddressSettingsInput = z.infer<
+  typeof updateSharedAddressSettingsSchema
+>;
 
 // ----------------------- 套餐 / 配额 -----------------------
 
@@ -190,6 +211,18 @@ export const updateUserSchema = z.object({
   locale: z.string().trim().max(16).nullable().optional(),
 });
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;
+
+/** 管理员邀请/创建用户：内部邮箱作为登录身份，外部邮箱只用于通知 */
+export const createManagedUserSchema = z.object({
+  name: z.string().trim().min(1, "请填写姓名").max(64),
+  externalEmail: z.string().trim().toLowerCase().email("外部邮箱格式不合法"),
+  domainId: z.string().uuid(),
+  localPart,
+  password: z.string().min(8, "密码至少 8 位").max(128),
+  sendNotice: z.boolean().default(true),
+  role: z.enum(ROLES).default("user"),
+});
+export type CreateManagedUserInput = z.infer<typeof createManagedUserSchema>;
 
 // ----------------------- 邮件（阶段二）-----------------------
 

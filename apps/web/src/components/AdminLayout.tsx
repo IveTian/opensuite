@@ -19,7 +19,6 @@ import {
   ScrollIcon,
   SlidersIcon,
   SunIcon,
-  TicketIcon,
   UsersIcon,
   XIcon,
 } from "./icons";
@@ -36,8 +35,7 @@ const NAV: {
   { to: "/admin/addresses", label: "邮箱地址", icon: AtSignIcon },
   { to: "/admin/directory", label: "通讯录", icon: AddressBookIcon },
   { to: "/admin/plans", label: "配额套餐", icon: CreditCardIcon },
-  { to: "/admin/invites", label: "邀请码", icon: TicketIcon },
-  { to: "/admin/settings", label: "注册策略", icon: SlidersIcon },
+  { to: "/admin/settings", label: "默认设置", icon: SlidersIcon },
   { to: "/admin/audit", label: "审计日志", icon: ScrollIcon },
   { to: "/admin/simulate", label: "模拟收信", icon: RefreshIcon },
 ];

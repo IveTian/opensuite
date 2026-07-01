@@ -15,6 +15,8 @@ interface Addr {
   id: string;
   address: string;
   senderName?: string | null;
+  sharedSignatureHtml?: string | null;
+  sharedDisablePersonalSignature?: boolean;
 }
 export interface ComposeInitial {
   fromAddressId?: string;
@@ -53,27 +55,36 @@ function splitRecipients(s: string): string[] {
 export function Compose({
   addresses,
   initial,
-  signatureHtml,
+  personalSignatureHtml,
+  orgSignatureHtml,
   onClose,
   onSent,
 }: {
   addresses: Addr[];
   initial?: ComposeInitial;
-  /** 合并后的签名（个人 + 组织）；新写/回复/转发时自动插入，编辑草稿不插入 */
-  signatureHtml?: string;
+  /** 个人签名；公共邮箱可配置禁用 */
+  personalSignatureHtml?: string | null;
+  /** 组织签名；所有账号通用 */
+  orgSignatureHtml?: string | null;
   onClose: () => void;
   onSent: () => void;
 }) {
+  const initialFromAddressId = initial?.fromAddressId ?? addresses[0]?.id ?? "";
+  const initialAddress = addresses.find((a) => a.id === initialFromAddressId);
+  const initialSignatureParts = [
+    initialAddress?.sharedDisablePersonalSignature ? null : personalSignatureHtml,
+    initialAddress?.sharedSignatureHtml,
+    orgSignatureHtml,
+  ].filter(Boolean);
+  const initialSignatureHtml = initialSignatureParts.join("<br>");
   const baseHtml =
     initial?.html ??
     (initial?.text ? `<p>${htmlEscape(initial.text).replace(/\r?\n/g, "<br>")}</p>` : "");
-  const sig = signatureHtml?.trim();
+  const sig = initialSignatureHtml?.trim();
   const initialHtml =
     sig && !initial?.draftId ? `<p></p>${sig}${baseHtml}` : baseHtml;
 
-  const [fromAddressId, setFromAddressId] = useState(
-    initial?.fromAddressId ?? addresses[0]?.id ?? "",
-  );
+  const [fromAddressId, setFromAddressId] = useState(initialFromAddressId);
   const [to, setTo] = useState(initial?.to ?? "");
   const [cc, setCc] = useState(initial?.cc ?? "");
   const [bcc, setBcc] = useState(initial?.bcc ?? "");

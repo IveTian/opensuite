@@ -14,17 +14,14 @@ export function Register() {
     "/api/public/registration-config",
   );
   const [name, setName] = useState("");
-  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [inviteCode, setInviteCode] = useState("");
   const [error, setError] = useState("");
-  const [pending, setPending] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
 
-  // bootstrap（系统零用户）：尚无域名，首位管理员用外部邮箱注册；
-  // 其余情况用「用户名 + 系统域名」直接开通 username@域名。
+  // bootstrap（系统零用户）：尚无域名，首位管理员用外部邮箱注册。
+  // 后续用户全部由管理员在用户管理中创建。
   const isBootstrap = config?.bootstrap ?? false;
 
   async function submit(e: FormEvent) {
@@ -32,26 +29,18 @@ export function Register() {
     setError("");
     setSubmitting(true);
     try {
-      const res = await api.post<{ status?: string }>("/api/public/sign-up", {
+      await api.post("/api/public/sign-up", {
         name,
+        email,
         password,
-        inviteCode: inviteCode || undefined,
-        ...(isBootstrap ? { email } : { username }),
       });
-      if (res?.status === "pending") {
-        setPending(true);
-      } else {
-        navigate("/");
-      }
+      navigate("/setup");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "注册失败");
     } finally {
       setSubmitting(false);
     }
   }
-
-  // 非引导且未配置默认注册域名：注册尚未就绪
-  const notReady = Boolean(config) && !isBootstrap && !config?.defaultDomain;
 
   return (
     <div className="flex min-h-full items-center justify-center bg-background p-4">
@@ -68,17 +57,13 @@ export function Register() {
           {loading ? (
             <p className="text-sm text-muted">加载注册配置…</p>
           ) : config && !config.enabled ? (
-            <Alert>当前未开放注册，请联系管理员获取邀请。</Alert>
-          ) : notReady ? (
-            <Alert>注册暂未就绪：管理员尚未配置默认注册域名，请稍后再试或联系管理员。</Alert>
-          ) : pending ? (
-            <Alert kind="success">注册成功，等待管理员审核后即可登录。</Alert>
+            <Alert>当前系统已有管理员。请联系管理员创建邮箱账号。</Alert>
           ) : (
             <>
               {isBootstrap && (
                 <div className="mb-4">
                   <Alert kind="success">
-                    系统尚无用户：首位注册者将成为管理员，无需邀请码。
+                    系统尚无用户：首位注册者将成为管理员，并进入域名配置向导。
                   </Alert>
                 </div>
               )}
@@ -88,39 +73,16 @@ export function Register() {
                   <Input value={name} onChange={(e) => setName(e.target.value)} required />
                 </TextField>
 
-                {isBootstrap ? (
-                  <TextField>
-                    <Label>邮箱</Label>
-                    <Input
-                      type="email"
-                      placeholder="you@example.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      required
-                    />
-                  </TextField>
-                ) : (
-                  <label className="flex flex-col gap-1.5 text-sm">
-                    <span className="font-medium text-foreground">邮箱地址</span>
-                    <div className="flex items-stretch overflow-hidden rounded-xl border border-border bg-field transition-colors focus-within:border-field-border-focus focus-within:ring-2 focus-within:ring-focus/40">
-                      <input
-                        className="min-w-0 flex-1 bg-transparent px-3 py-2 text-field-foreground outline-none"
-                        placeholder="yourname"
-                        autoComplete="username"
-                        value={username}
-                        onChange={(e) => setUsername(e.target.value)}
-                        required
-                      />
-                      <span className="flex items-center whitespace-nowrap border-l border-border bg-surface-secondary px-3 text-muted">
-                        @{config?.defaultDomain}
-                      </span>
-                    </div>
-                    <span className="text-xs text-muted">
-                      注册后即以 {username || "yourname"}@{config?.defaultDomain}{" "}
-                      作为登录账号与收发邮箱。
-                    </span>
-                  </label>
-                )}
+                <TextField>
+                  <Label>管理员外部邮箱</Label>
+                  <Input
+                    type="email"
+                    placeholder="you@example.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                  />
+                </TextField>
 
                 <TextField>
                   <Label>密码（至少 8 位）</Label>
@@ -132,19 +94,9 @@ export function Register() {
                     required
                   />
                 </TextField>
-                {config?.requireInviteCode && (
-                  <TextField>
-                    <Label>邀请码</Label>
-                    <Input
-                      value={inviteCode}
-                      onChange={(e) => setInviteCode(e.target.value)}
-                      required
-                    />
-                  </TextField>
-                )}
                 {error && <Alert>{error}</Alert>}
                 <Button type="submit" variant="primary" fullWidth isDisabled={submitting}>
-                  {submitting ? "注册中…" : "注册"}
+                  {submitting ? "创建中…" : "创建管理员账号"}
                 </Button>
               </form>
             </>

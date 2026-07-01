@@ -2,9 +2,21 @@ import { zValidator } from "@hono/zod-validator";
 import { eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { domains, emailAddresses, plans, user, userQuota } from "@mailflare/db";
-import { assignQuotaSchema, updateUserSchema } from "@mailflare/shared";
+import {
+  assignQuotaSchema,
+  createManagedUserSchema,
+  updateUserSchema,
+} from "@mailflare/shared";
 import type { AppEnv } from "../../env.js";
 import { audit } from "../../lib/audit.js";
+
+function escapeHtml(s: string): string {
+  return s
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
 
 export const userRoutes = new Hono<AppEnv>()
   /** 用户列表（含配额与地址数） */
@@ -14,6 +26,7 @@ export const userRoutes = new Hono<AppEnv>()
         id: user.id,
         name: user.name,
         email: user.email,
+        externalEmail: user.externalEmail,
         role: user.role,
         approvalStatus: user.approvalStatus,
         banned: user.banned,
@@ -30,6 +43,117 @@ export const userRoutes = new Hono<AppEnv>()
       .groupBy(user.id, userQuota.userId)
       .orderBy(user.createdAt);
     return c.json(rows);
+  })
+
+  /** 管理员创建/邀请用户：内部邮箱登录，外部邮箱接收一次性通知 */
+  .post("/", zValidator("json", createManagedUserSchema), async (c) => {
+    const db = c.var.db;
+    const { name, externalEmail, domainId, localPart, password, sendNotice, role } =
+      c.req.valid("json");
+
+    const domain = await db.query.domains.findFirst({
+      where: eq(domains.id, domainId),
+    });
+    if (!domain) return c.json({ error: "域名不存在" }, 404);
+    if (domain.status === "disabled") return c.json({ error: "该域名已停用" }, 422);
+
+    const internalEmail = `${localPart}@${domain.name}`;
+    const [existingUser, existingAddress] = await Promise.all([
+      db.query.user.findFirst({ where: eq(user.email, internalEmail) }),
+      db.query.emailAddresses.findFirst({
+        where: eq(emailAddresses.address, internalEmail),
+      }),
+    ]);
+    if (existingUser || existingAddress) {
+      return c.json({ error: "该内部邮箱地址已存在" }, 409);
+    }
+
+    let createdUserId: string;
+    try {
+      const res = await c.var.auth.api.signUpEmail({
+        body: { name, email: internalEmail, password },
+        headers: c.req.raw.headers,
+      });
+      createdUserId = res.user.id;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "创建用户失败";
+      return c.json({ error: message }, 400);
+    }
+
+    await db
+      .update(user)
+      .set({
+        role,
+        approvalStatus: "active",
+        emailVerified: true,
+        externalEmail,
+        updatedAt: new Date(),
+      })
+      .where(eq(user.id, createdUserId));
+
+    const [address] = await db
+      .insert(emailAddresses)
+      .values({
+        domainId: domain.id,
+        userId: createdUserId,
+        localPart,
+        address: internalEmail,
+        type: "mailbox",
+        isPrimary: true,
+        status: "active",
+      })
+      .returning();
+
+    let noticeSent = false;
+    let noticeError: string | null = null;
+    if (sendNotice) {
+      const from = `notice@${domain.name}`;
+      const safeName = escapeHtml(name);
+      const safeInternal = escapeHtml(internalEmail);
+      const safePassword = escapeHtml(password);
+      try {
+        await c.env.EMAIL.send({
+          from: { email: from, name: "MailFlare Notice" },
+          to: [externalEmail],
+          subject: `你的 ${domain.name} 邮箱账号已创建`,
+          text:
+            `${name}，你好：\n\n` +
+            `你的邮箱账号已创建。\n` +
+            `登录账号：${internalEmail}\n` +
+            `初始密码：${password}\n\n` +
+            `首次登录后请尽快修改密码。`,
+          html:
+            `<p>${safeName}，你好：</p>` +
+            `<p>你的邮箱账号已创建。</p>` +
+            `<p><strong>登录账号：</strong>${safeInternal}<br />` +
+            `<strong>初始密码：</strong>${safePassword}</p>` +
+            `<p>首次登录后请尽快修改密码。</p>`,
+        });
+        noticeSent = true;
+      } catch (err) {
+        noticeError = err instanceof Error ? err.message : "通知发送失败";
+      }
+    }
+
+    await audit(db, c.var.user!.id, "user.create", "user", createdUserId, {
+      internalEmail,
+      externalEmail,
+      addressId: address!.id,
+      noticeSent,
+      noticeError,
+    });
+
+    return c.json(
+      {
+        userId: createdUserId,
+        internalEmail,
+        externalEmail,
+        addressId: address!.id,
+        noticeSent,
+        noticeError,
+      },
+      201,
+    );
   })
 
   /** 用户详情（合并配额 + 地址） */
@@ -64,6 +188,7 @@ export const userRoutes = new Hono<AppEnv>()
         approvalStatus: u.approvalStatus,
         banned: u.banned,
         emailVerified: u.emailVerified,
+        externalEmail: u.externalEmail,
         locale: u.locale,
         createdAt: u.createdAt,
       },

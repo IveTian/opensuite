@@ -57,6 +57,12 @@ export const emailAddresses = pgTable(
     address: text("address").notNull(),
     // 自定义发信人显示名（发信时用作 From 头 name；为空则回退用户昵称）
     senderName: text("sender_name"),
+    // 公共邮箱专用签名；撰写时可与个人/组织签名组合
+    sharedSignatureHtml: text("shared_signature_html"),
+    // 公共邮箱发信时是否禁用个人签名
+    sharedDisablePersonalSignature: boolean("shared_disable_personal_signature")
+      .notNull()
+      .default(false),
     type: text("type").notNull().default("mailbox"), // mailbox/alias/catch_all
     targetAddressId: uuid("target_address_id"), // 预留：alias 指向真实 mailbox
     isPrimary: boolean("is_primary").notNull().default(false),
@@ -166,7 +172,7 @@ export const systemSettings = pgTable("system_settings", {
   // 品牌：站点名称与 Logo（logoUrl 可为外链或 data: URL；为空则用内置名称与图标）
   siteName: text("site_name"),
   logoUrl: text("logo_url"),
-  registrationMode: text("registration_mode").notNull().default("invite_only"),
+  registrationMode: text("registration_mode").notNull().default("closed"),
   requireAdminApproval: boolean("require_admin_approval").notNull().default(false),
   defaultPlanId: uuid("default_plan_id").references(() => plans.id, {
     onDelete: "set null",
@@ -205,6 +211,29 @@ export const departments = pgTable("departments", {
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
 });
+
+// ============ department_mailbox_access 部门公共邮箱授权（实装）============
+// 部门开通公共邮箱后，部门成员及其下级部门成员动态获得访问权。
+// defaultCanSend=false 即「全部只读」；需要发信的人员通过 mailbox_members 显式授权 canSend=true。
+export const departmentMailboxAccess = pgTable(
+  "department_mailbox_access",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    departmentId: uuid("department_id")
+      .notNull()
+      .references(() => departments.id, { onDelete: "cascade" }),
+    addressId: uuid("address_id")
+      .notNull()
+      .references(() => emailAddresses.id, { onDelete: "cascade" }),
+    defaultCanSend: boolean("default_can_send").notNull().default(false),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("department_mailbox_access_dept_addr_uniq").on(t.departmentId, t.addressId),
+    index("department_mailbox_access_addr_idx").on(t.addressId),
+  ],
+);
 
 // ============ directory_profiles 用户组织资料（通讯录用；每用户一行）============
 // 扩展 user 表的组织通讯录字段（部门/职位/电话等），由 admin 维护。
@@ -475,6 +504,7 @@ export type SystemSettings = typeof systemSettings.$inferSelect;
 export type UserSettings = typeof userSettings.$inferSelect;
 export type MailboxMember = typeof mailboxMembers.$inferSelect;
 export type Department = typeof departments.$inferSelect;
+export type DepartmentMailboxAccess = typeof departmentMailboxAccess.$inferSelect;
 export type DirectoryProfile = typeof directoryProfiles.$inferSelect;
 export type PersonalContact = typeof personalContacts.$inferSelect;
 export type Message = typeof messages.$inferSelect;

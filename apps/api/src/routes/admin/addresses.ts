@@ -1,11 +1,25 @@
 import { zValidator } from "@hono/zod-validator";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
-import { domains, emailAddresses, mailboxMembers, user, userQuota } from "@mailflare/db";
-import { addMailboxMemberSchema, createAddressSchema } from "@mailflare/shared";
+import {
+  departmentMailboxAccess,
+  departments,
+  domains,
+  emailAddresses,
+  mailboxMembers,
+  user,
+  userQuota,
+} from "@mailflare/db";
+import {
+  addMailboxMemberSchema,
+  createAddressSchema,
+  updateMailboxMemberSchema,
+  updateSharedAddressSettingsSchema,
+} from "@mailflare/shared";
 import { z } from "zod";
 import type { AppEnv } from "../../env.js";
 import { audit } from "../../lib/audit.js";
+import { sanitizeOutboundHtml } from "../../lib/sanitize.js";
 
 const updateAddressSchema = z.object({
   status: z.enum(["active", "disabled"]).optional(),
@@ -34,6 +48,9 @@ export const addressRoutes = new Hono<AppEnv>()
         domain: domains.name,
         userId: emailAddresses.userId,
         ownerEmail: user.email,
+        senderName: emailAddresses.senderName,
+        sharedSignatureHtml: emailAddresses.sharedSignatureHtml,
+        sharedDisablePersonalSignature: emailAddresses.sharedDisablePersonalSignature,
         createdAt: emailAddresses.createdAt,
       })
       .from(emailAddresses)
@@ -41,7 +58,26 @@ export const addressRoutes = new Hono<AppEnv>()
       .leftJoin(user, eq(emailAddresses.userId, user.id))
       .where(conds.length ? and(...conds) : undefined)
       .orderBy(emailAddresses.createdAt);
-    return c.json(rows);
+    const sharedIds = rows.filter((r) => r.type === "shared").map((r) => r.id);
+    const links = sharedIds.length
+      ? await c.var.db
+          .select({
+            addressId: departmentMailboxAccess.addressId,
+            departmentId: departmentMailboxAccess.departmentId,
+            departmentName: departments.name,
+            defaultCanSend: departmentMailboxAccess.defaultCanSend,
+          })
+          .from(departmentMailboxAccess)
+          .innerJoin(departments, eq(departmentMailboxAccess.departmentId, departments.id))
+          .where(inArray(departmentMailboxAccess.addressId, sharedIds))
+      : [];
+    const byAddress = new Map<string, typeof links>();
+    for (const link of links) {
+      const arr = byAddress.get(link.addressId) ?? [];
+      arr.push(link);
+      byAddress.set(link.addressId, arr);
+    }
+    return c.json(rows.map((r) => ({ ...r, departmentLinks: byAddress.get(r.id) ?? [] })));
   })
 
   /** 新建邮箱地址（mailbox / alias） */
@@ -149,6 +185,52 @@ export const addressRoutes = new Hono<AppEnv>()
       .onConflictDoNothing({ target: [mailboxMembers.addressId, mailboxMembers.userId] });
     await audit(db, c.var.user!.id, "mailbox.member.add", "address", id, { userId });
     return c.json({ ok: true }, 201);
+  })
+
+  /** 公共邮箱成员：修改是否可发信 */
+  .patch("/:id/members/:userId", zValidator("json", updateMailboxMemberSchema), async (c) => {
+    const db = c.var.db;
+    const id = c.req.param("id");
+    const userId = c.req.param("userId");
+    const { canSend } = c.req.valid("json");
+    const [row] = await db
+      .update(mailboxMembers)
+      .set({ canSend })
+      .where(and(eq(mailboxMembers.addressId, id), eq(mailboxMembers.userId, userId)))
+      .returning();
+    if (!row) return c.json({ error: "成员不存在" }, 404);
+    await audit(db, c.var.user!.id, "mailbox.member.update", "address", id, {
+      userId,
+      canSend,
+    });
+    return c.json(row);
+  })
+
+  /** 公共邮箱发信配置：显示名、公共签名、是否禁用个人签名 */
+  .patch("/:id/shared-settings", zValidator("json", updateSharedAddressSettingsSchema), async (c) => {
+    const db = c.var.db;
+    const id = c.req.param("id");
+    const existing = await db.query.emailAddresses.findFirst({
+      where: eq(emailAddresses.id, id),
+    });
+    if (!existing) return c.json({ error: "地址不存在" }, 404);
+    if (existing.type !== "shared") return c.json({ error: "仅公共邮箱可配置公共签名" }, 422);
+    const v = c.req.valid("json");
+    const cleanSignature = v.sharedSignatureHtml
+      ? sanitizeOutboundHtml(v.sharedSignatureHtml)
+      : null;
+    const [row] = await db
+      .update(emailAddresses)
+      .set({
+        senderName: v.senderName?.trim() ? v.senderName.trim() : null,
+        sharedSignatureHtml: cleanSignature,
+        sharedDisablePersonalSignature: v.sharedDisablePersonalSignature ?? false,
+        updatedAt: new Date(),
+      })
+      .where(eq(emailAddresses.id, id))
+      .returning();
+    await audit(db, c.var.user!.id, "address.shared_settings.update", "address", id);
+    return c.json(row);
   })
 
   /** 公共邮箱成员：移除授权 */

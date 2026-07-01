@@ -58,7 +58,7 @@ export function Domains() {
       render: (r) => (
         <div className="flex gap-2">
           <Button size="sm" variant="ghost" onClick={() => setSelected(r)}>
-            DNS/Catch-all
+            验证/投递
           </Button>
           <Button size="sm" variant="ghost" onClick={() => toggle(r)}>
             {r.status === "active" ? "停用" : "启用"}
@@ -75,7 +75,7 @@ export function Domains() {
 
   return (
     <div>
-      <PageHeader title="域名管理" subtitle="托管用于收发邮件的域名" />
+      <PageHeader title="域名管理" subtitle="配置并验证当前用于收信的域名" />
       <Panel className="mb-5">
         <form onSubmit={create} className="flex items-end gap-3">
           <TextField className="flex-1">

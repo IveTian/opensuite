@@ -1,13 +1,18 @@
 import { Button, Input, Label, TextField } from "@heroui/react";
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import type { RegistrationConfig } from "@mailflare/shared";
 import { Alert } from "../components/ui";
 import { BrandMark } from "../components/BrandMark";
 import { useBranding } from "../providers/branding";
+import { useFetch } from "../hooks/useFetch";
 import { signIn } from "../lib/auth-client";
 
 export function Login() {
   const { siteName } = useBranding();
+  const { data: registration } = useFetch<RegistrationConfig>(
+    "/api/public/registration-config",
+  );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -69,12 +74,14 @@ export function Login() {
           </form>
         </div>
 
-        <p className="mt-5 text-center text-sm text-muted">
-          没有账号？{" "}
-          <Link to="/register" className="font-medium text-accent">
-            立即注册
-          </Link>
-        </p>
+        {registration?.bootstrap && (
+          <p className="mt-5 text-center text-sm text-muted">
+            首次使用？{" "}
+            <Link to="/register" className="font-medium text-accent">
+              创建管理员账号
+            </Link>
+          </p>
+        )}
       </div>
     </div>
   );

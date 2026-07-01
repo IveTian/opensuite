@@ -25,7 +25,7 @@ export interface AuthEnv {
  * 每请求构造 Better Auth 实例（Workers 无 process.env，须运行时注入 env 与 db）。
  *
  * 说明：
- * - 注册策略（公开/邀请码/审核）由 API 的 /api/public/sign-up 包装 + Hono 守卫强制执行，
+ * - 公开注册只允许首位管理员引导；后续用户由管理员业务接口创建。
  *   这里保持 signUp 可用以便服务端 `auth.api.signUpEmail` 调用。
  * - after 钩子保证每个新用户都有一行 user_quota（读系统默认配额），覆盖公开注册与管理员建号两条路径。
  */
@@ -46,10 +46,10 @@ export function createAuth(db: Database, env: AuthEnv) {
 
     emailAndPassword: {
       enabled: true,
-      // 保持 false：公开注册的策略闸门放在 API 包装层，服务端 signUpEmail 仍需可用
+      // 保持 false：管理员业务接口和首位管理员引导都需要服务端 signUpEmail
       disableSignUp: false,
       minPasswordLength: 8,
-      // 注册不自动登录：由 /api/public/sign-up 包装在「业务收尾 + 非待审核」后显式 signIn
+      // 注册不自动登录：由 /api/public/sign-up 在首位管理员收尾后显式 signIn
       autoSignIn: false,
     },
 
@@ -59,6 +59,11 @@ export function createAuth(db: Database, env: AuthEnv) {
         approvalStatus: {
           type: "string",
           defaultValue: "active",
+          input: false,
+        },
+        externalEmail: {
+          type: "string",
+          required: false,
           input: false,
         },
         locale: {

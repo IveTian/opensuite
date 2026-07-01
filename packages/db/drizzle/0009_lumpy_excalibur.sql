@@ -1,0 +1,1 @@
+ALTER TABLE "system_settings" ALTER COLUMN "registration_mode" SET DEFAULT 'closed';

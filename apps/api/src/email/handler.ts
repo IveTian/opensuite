@@ -1,9 +1,9 @@
 import PostalMime from "postal-mime";
-import { eq } from "drizzle-orm";
-import { createDb, mailboxMembers } from "@mailflare/db";
+import { createDb } from "@mailflare/db";
 import type { Bindings } from "../env.js";
 import { processInboundInvites } from "../lib/calendar-inbound.js";
 import { storeInboundEmail } from "../lib/mail.js";
+import { sharedMailboxRecipientUserIds } from "../lib/mailbox-access.js";
 
 /**
  * 入站邮件处理器（Email Routing）。
@@ -58,11 +58,7 @@ async function recipientUserIds(
 ): Promise<string[]> {
   if (deliveredTo.userId) return [deliveredTo.userId];
   if (deliveredTo.type === "shared") {
-    const members = await db
-      .select({ userId: mailboxMembers.userId })
-      .from(mailboxMembers)
-      .where(eq(mailboxMembers.addressId, deliveredTo.id));
-    return members.map((m) => m.userId);
+    return sharedMailboxRecipientUserIds(db, deliveredTo.id);
   }
   return [];
 }

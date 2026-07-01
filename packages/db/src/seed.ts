@@ -6,7 +6,7 @@ import { plans, systemSettings, user, userQuota } from "./schema/index.js";
 /**
  * 初始化基线数据（幂等）：
  *  1. 默认配额套餐
- *  2. system_settings 单行（默认 invite_only）
+ *  2. system_settings 单行（默认关闭公开注册）
  *  3. 可选：把指定邮箱的用户提升为管理员（SEED_PROMOTE_EMAIL 或 `--promote=<email>`）
  *
  * 用法：
@@ -55,7 +55,7 @@ async function main() {
       .insert(systemSettings)
       .values({
         id: SYSTEM_SETTINGS_ID,
-        registrationMode: "invite_only",
+        registrationMode: "closed",
         requireAdminApproval: false,
         defaultPlanId: planRow?.id ?? null,
         defaultStorageQuotaBytes: 1 * BYTES_PER_GB,
@@ -71,7 +71,7 @@ async function main() {
           sql`${systemSettings.id} = ${SYSTEM_SETTINGS_ID} and ${systemSettings.defaultPlanId} is null`,
         );
     }
-    console.log("✓ system_settings 已就绪（registrationMode=invite_only）");
+    console.log("✓ system_settings 已就绪（registrationMode=closed）");
 
     // 3) 可选：提升管理员
     if (promoteEmail) {

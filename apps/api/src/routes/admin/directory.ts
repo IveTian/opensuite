@@ -1,10 +1,18 @@
 import { zValidator } from "@hono/zod-validator";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
-import { departments, directoryProfiles, user } from "@mailflare/db";
 import {
+  departmentMailboxAccess,
+  departments,
+  directoryProfiles,
+  emailAddresses,
+  user,
+} from "@mailflare/db";
+import {
+  setDepartmentMailboxSchema,
   updateDirectoryProfileSchema,
   upsertDepartmentSchema,
+  updateMailboxMemberSchema,
 } from "@mailflare/shared";
 import type { AppEnv } from "../../env.js";
 import { audit } from "../../lib/audit.js";
@@ -39,6 +47,107 @@ export const directoryRoutes = new Hono<AppEnv>()
       name: v.name,
     });
     return c.json(row, 201);
+  })
+
+  /** 部门已开通的公共邮箱 */
+  .get("/departments/:id/mailboxes", async (c) => {
+    const departmentId = c.req.param("id");
+    const rows = await c.var.db
+      .select({
+        id: departmentMailboxAccess.id,
+        departmentId: departmentMailboxAccess.departmentId,
+        addressId: departmentMailboxAccess.addressId,
+        address: emailAddresses.address,
+        status: emailAddresses.status,
+        defaultCanSend: departmentMailboxAccess.defaultCanSend,
+      })
+      .from(departmentMailboxAccess)
+      .innerJoin(emailAddresses, eq(departmentMailboxAccess.addressId, emailAddresses.id))
+      .where(eq(departmentMailboxAccess.departmentId, departmentId))
+      .orderBy(emailAddresses.address);
+    return c.json(rows);
+  })
+
+  /** 给部门开通公共邮箱；成员范围由组织架构动态派生 */
+  .post(
+    "/departments/:id/mailboxes",
+    zValidator("json", setDepartmentMailboxSchema),
+    async (c) => {
+      const db = c.var.db;
+      const departmentId = c.req.param("id");
+      const { addressId, defaultCanSend } = c.req.valid("json");
+      const dept = await db.query.departments.findFirst({
+        where: eq(departments.id, departmentId),
+      });
+      if (!dept) return c.json({ error: "部门不存在" }, 404);
+      const addr = await db.query.emailAddresses.findFirst({
+        where: eq(emailAddresses.id, addressId),
+      });
+      if (!addr) return c.json({ error: "邮箱地址不存在" }, 404);
+      if (addr.type !== "shared") return c.json({ error: "只能给部门开通公共邮箱" }, 422);
+      const [row] = await db
+        .insert(departmentMailboxAccess)
+        .values({ departmentId, addressId, defaultCanSend })
+        .onConflictDoUpdate({
+          target: [departmentMailboxAccess.departmentId, departmentMailboxAccess.addressId],
+          set: { defaultCanSend, updatedAt: new Date() },
+        })
+        .returning();
+      await audit(db, c.var.user!.id, "directory.department_mailbox.upsert", "department", departmentId, {
+        addressId,
+        defaultCanSend,
+      });
+      return c.json(row, 201);
+    },
+  )
+
+  /** 修改部门公共邮箱的默认权限（全部只读 / 全部可发） */
+  .patch(
+    "/departments/:id/mailboxes/:addressId",
+    zValidator("json", updateMailboxMemberSchema),
+    async (c) => {
+      const db = c.var.db;
+      const departmentId = c.req.param("id");
+      const addressId = c.req.param("addressId");
+      const { canSend } = c.req.valid("json");
+      const [row] = await db
+        .update(departmentMailboxAccess)
+        .set({ defaultCanSend: canSend, updatedAt: new Date() })
+        .where(
+          and(
+            eq(departmentMailboxAccess.departmentId, departmentId),
+            eq(departmentMailboxAccess.addressId, addressId),
+          ),
+        )
+        .returning();
+      if (!row) return c.json({ error: "部门公共邮箱未开通" }, 404);
+      await audit(db, c.var.user!.id, "directory.department_mailbox.update", "department", departmentId, {
+        addressId,
+        canSend,
+      });
+      return c.json(row);
+    },
+  )
+
+  /** 取消部门公共邮箱 */
+  .delete("/departments/:id/mailboxes/:addressId", async (c) => {
+    const db = c.var.db;
+    const departmentId = c.req.param("id");
+    const addressId = c.req.param("addressId");
+    const [row] = await db
+      .delete(departmentMailboxAccess)
+      .where(
+        and(
+          eq(departmentMailboxAccess.departmentId, departmentId),
+          eq(departmentMailboxAccess.addressId, addressId),
+        ),
+      )
+      .returning();
+    if (!row) return c.json({ error: "部门公共邮箱未开通" }, 404);
+    await audit(db, c.var.user!.id, "directory.department_mailbox.delete", "department", departmentId, {
+      addressId,
+    });
+    return c.json({ ok: true });
   })
 
   /** 改名/排序 */

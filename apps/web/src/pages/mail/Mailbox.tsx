@@ -229,10 +229,6 @@ export function Mailbox() {
     return () => setHideBottomNav(false);
   }, [isMobile, readerOpen, setHideBottomNav]);
 
-  // 合并签名：个人在上、组织在下
-  const signature = [mailSettings?.signatureHtml, mailSettings?.orgSignatureHtml]
-    .filter(Boolean)
-    .join("<br>");
   const allSelected = items.length > 0 && items.every((m) => selected.has(m.id));
 
   /** 打开撰写面板（每次都换 key，确保编辑器以新内容重新挂载） */
@@ -1064,7 +1060,8 @@ export function Mailbox() {
               key={composeKey}
               addresses={sendable}
               initial={composeInitial}
-              signatureHtml={signature}
+              personalSignatureHtml={mailSettings?.signatureHtml ?? null}
+              orgSignatureHtml={mailSettings?.orgSignatureHtml ?? null}
               onClose={() => {
                 setComposing(false);
                 refreshAll();

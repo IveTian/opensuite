@@ -4,7 +4,6 @@ import { Hono } from "hono";
 import {
   domains,
   emailAddresses,
-  mailboxMembers,
   systemSettings,
   user,
   userQuota,
@@ -21,6 +20,7 @@ import {
   type MeProfile,
 } from "@mailflare/shared";
 import type { AppEnv } from "../env.js";
+import { readableAddressIds, sendableAddressIds } from "../lib/mailbox-access.js";
 import { sanitizeOutboundHtml } from "../lib/sanitize.js";
 import { avatarKey, base64ToBytes } from "../lib/storage.js";
 import { loadUser, requireAuth } from "../middleware/auth.js";
@@ -85,13 +85,15 @@ export const meRoutes = new Hono<AppEnv>()
   .get("/accounts", async (c) => {
     const db = c.var.db;
     const u = c.var.user!;
-    const [owned, shared] = await Promise.all([
+    const [owned, readable, sendable] = await Promise.all([
       db
         .select({
           id: emailAddresses.id,
           address: emailAddresses.address,
           isPrimary: emailAddresses.isPrimary,
           senderName: emailAddresses.senderName,
+          sharedSignatureHtml: emailAddresses.sharedSignatureHtml,
+          sharedDisablePersonalSignature: emailAddresses.sharedDisablePersonalSignature,
         })
         .from(emailAddresses)
         .where(
@@ -101,17 +103,30 @@ export const meRoutes = new Hono<AppEnv>()
             eq(emailAddresses.status, "active"),
           ),
         ),
-      db
-        .select({
-          id: emailAddresses.id,
-          address: emailAddresses.address,
-          senderName: emailAddresses.senderName,
-          canSend: mailboxMembers.canSend,
-        })
-        .from(mailboxMembers)
-        .innerJoin(emailAddresses, eq(mailboxMembers.addressId, emailAddresses.id))
-        .where(and(eq(mailboxMembers.userId, u.id), eq(emailAddresses.status, "active"))),
+      readableAddressIds(db, u.id),
+      sendableAddressIds(db, u.id),
     ]);
+    const ownedIds = new Set(owned.map((a) => a.id));
+    const sharedIds = readable.filter((id) => !ownedIds.has(id));
+    const sendableSet = new Set(sendable);
+    const shared = sharedIds.length
+      ? await db
+          .select({
+            id: emailAddresses.id,
+            address: emailAddresses.address,
+            senderName: emailAddresses.senderName,
+            sharedSignatureHtml: emailAddresses.sharedSignatureHtml,
+            sharedDisablePersonalSignature: emailAddresses.sharedDisablePersonalSignature,
+          })
+          .from(emailAddresses)
+          .where(
+            and(
+              inArray(emailAddresses.id, sharedIds),
+              eq(emailAddresses.type, "shared"),
+              eq(emailAddresses.status, "active"),
+            ),
+          )
+      : [];
 
     const accounts: MailboxAccount[] = [
       ...owned.map((a) => ({
@@ -121,14 +136,18 @@ export const meRoutes = new Hono<AppEnv>()
         isPrimary: a.isPrimary,
         canSend: true,
         senderName: a.senderName,
+        sharedSignatureHtml: a.sharedSignatureHtml,
+        sharedDisablePersonalSignature: a.sharedDisablePersonalSignature,
       })),
       ...shared.map((a) => ({
         id: a.id,
         address: a.address,
         kind: "shared" as const,
         isPrimary: false,
-        canSend: a.canSend,
+        canSend: sendableSet.has(a.id),
         senderName: a.senderName,
+        sharedSignatureHtml: a.sharedSignatureHtml,
+        sharedDisablePersonalSignature: a.sharedDisablePersonalSignature,
       })),
     ];
     // 主邮箱优先，其余按地址排序

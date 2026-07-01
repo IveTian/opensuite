@@ -1,6 +1,5 @@
-import { Button, Input, Label, Switch, TextField } from "@heroui/react";
+import { Button, Input, Label, TextField } from "@heroui/react";
 import { Suspense, lazy, useEffect, useState, type FormEvent } from "react";
-import type { RegistrationMode } from "@mailflare/shared";
 import { Select } from "../../components/Select";
 import { MailIcon } from "../../components/icons";
 import { Alert, PageHeader, Panel } from "../../components/ui";
@@ -11,7 +10,7 @@ import { bytesToGib, gibToBytes } from "../../lib/format";
 const RichTextEditor = lazy(() => import("../../components/RichTextEditor"));
 
 interface Settings {
-  registrationMode: RegistrationMode;
+  registrationMode: string;
   requireAdminApproval: boolean;
   defaultStorageQuotaBytes: number;
   defaultMaxAddresses: number;
@@ -35,8 +34,6 @@ export function Settings() {
   const { data: domains } = useFetch<DomainRow[]>("/api/admin/domains");
   const { data: plans } = useFetch<PlanRow[]>("/api/admin/plans");
 
-  const [mode, setMode] = useState<RegistrationMode>("invite_only");
-  const [approval, setApproval] = useState(false);
   const [gib, setGib] = useState("1");
   const [maxAddr, setMaxAddr] = useState("1");
   const [planId, setPlanId] = useState("");
@@ -49,8 +46,6 @@ export function Settings() {
 
   useEffect(() => {
     if (!settings) return;
-    setMode(settings.registrationMode);
-    setApproval(settings.requireAdminApproval);
     setGib(String(bytesToGib(settings.defaultStorageQuotaBytes)));
     setMaxAddr(String(settings.defaultMaxAddresses));
     setPlanId(settings.defaultPlanId ?? "");
@@ -77,8 +72,8 @@ export function Settings() {
     setBusy(true);
     try {
       await api.put("/api/admin/settings", {
-        registrationMode: mode,
-        requireAdminApproval: approval,
+        registrationMode: "closed",
+        requireAdminApproval: false,
         defaultStorageQuotaBytes: gibToBytes(Number(gib)),
         defaultMaxAddresses: Number(maxAddr),
         defaultPlanId: planId || null,
@@ -97,7 +92,7 @@ export function Settings() {
 
   return (
     <div className="max-w-xl">
-      <PageHeader title="系统设置" subtitle="站点品牌、注册策略与默认配额" />
+      <PageHeader title="系统设置" subtitle="站点品牌、默认配额与组织签名" />
       <Panel>
         <form onSubmit={save} className="flex flex-col gap-4">
           <div className="flex flex-col gap-3 border-b border-separator pb-4">
@@ -148,22 +143,6 @@ export function Settings() {
                 建议 ≤ 200KB 的方形 PNG / SVG；留空则使用内置图标与名称。
               </p>
             </div>
-          </div>
-
-          <Select
-            label="注册模式"
-            value={mode}
-            onChange={(v) => setMode(v as RegistrationMode)}
-            options={[
-              { value: "open", label: "开放注册（任何人可注册）" },
-              { value: "invite_only", label: "仅邀请码" },
-              { value: "closed", label: "关闭注册" },
-            ]}
-          />
-
-          <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
-            <span className="text-sm">注册后需管理员审核</span>
-            <Switch isSelected={approval} onChange={setApproval} />
           </div>
 
           <div className="flex gap-3">

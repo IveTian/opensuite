@@ -21,7 +21,6 @@ import {
   calendarEvents,
   emailAddresses,
   eventAttendees,
-  mailboxMembers,
   messages,
   userQuota,
 } from "@mailflare/db";
@@ -37,6 +36,7 @@ import type { AppEnv } from "../env.js";
 import type { Bindings } from "../env.js";
 import { parseIcs } from "../lib/ical.js";
 import { makeSnippet, resolveDelivery, storeInboundEmail } from "../lib/mail.js";
+import { readableAddressIds, sendableAddressIds } from "../lib/mailbox-access.js";
 import { sanitizeOutboundHtml } from "../lib/sanitize.js";
 import { attachmentKey, base64ToBytes, rawKey } from "../lib/storage.js";
 
@@ -44,17 +44,6 @@ import { attachmentKey, base64ToBytes, rawKey } from "../lib/storage.js";
  * 用户可访问的全部地址 id：自有地址（含别名）+ 被授权的公共邮箱。
  * 邮件读取/操作的授权边界。
  */
-async function accessibleAddressIds(db: Database, userId: string): Promise<string[]> {
-  const [owned, shared] = await Promise.all([
-    db.select({ id: emailAddresses.id }).from(emailAddresses).where(eq(emailAddresses.userId, userId)),
-    db
-      .select({ id: mailboxMembers.addressId })
-      .from(mailboxMembers)
-      .where(eq(mailboxMembers.userId, userId)),
-  ]);
-  return [...new Set([...owned.map((r) => r.id), ...shared.map((r) => r.id)])];
-}
-
 /**
  * 作用域地址集：指定 addressId 且可访问时锁定到该账号，否则为全部可访问地址。
  * 返回 null 表示请求了无权访问的地址（应视为空结果）。
@@ -64,14 +53,14 @@ async function scopeIds(
   userId: string,
   addressId?: string,
 ): Promise<string[] | null> {
-  const all = await accessibleAddressIds(db, userId);
+  const all = await readableAddressIds(db, userId);
   if (addressId) return all.includes(addressId) ? [addressId] : null;
   return all;
 }
 
 /** 校验某条邮件当前用户可访问，返回邮件行 + 归属地址 */
 async function accessibleMessage(db: Database, userId: string, id: string) {
-  const ids = await accessibleAddressIds(db, userId);
+  const ids = await readableAddressIds(db, userId);
   if (!ids.length) return null;
   const [row] = await db
     .select({ m: messages, address: emailAddresses.address })
@@ -367,7 +356,7 @@ export const messageRoutes = new Hono<AppEnv>()
   .get("/new", async (c) => {
     const db = c.var.db;
     const now = new Date();
-    const ids = await accessibleAddressIds(db, c.var.user!.id);
+    const ids = await readableAddressIds(db, c.var.user!.id);
     if (!ids.length) return c.json({ items: [], now: now.toISOString() });
     const sinceStr = c.req.query("since");
     const since = sinceStr ? new Date(sinceStr) : now;
@@ -479,7 +468,7 @@ export const messageRoutes = new Hono<AppEnv>()
   /** 批量操作：勾选多封后一次性归档/删除/移回收件箱/标记（仅限本人邮件） */
   .post("/bulk", zValidator("json", bulkActionSchema), async (c) => {
     const db = c.var.db;
-    const ids = await accessibleAddressIds(db, c.var.user!.id);
+    const ids = await readableAddressIds(db, c.var.user!.id);
     if (!ids.length) return c.json({ ok: true, affected: 0 });
     const { ids: msgIds, action } = c.req.valid("json");
 
@@ -520,7 +509,7 @@ export const messageRoutes = new Hono<AppEnv>()
   /** 导出邮箱为 .mbox（收件箱 + 已发） */
   .get("/export", async (c) => {
     const db = c.var.db;
-    const ids = await accessibleAddressIds(db, c.var.user!.id);
+    const ids = await readableAddressIds(db, c.var.user!.id);
     if (!ids.length) {
       return new Response("", { headers: { "Content-Type": "application/mbox" } });
     }
@@ -578,7 +567,7 @@ export const messageRoutes = new Hono<AppEnv>()
       ),
     });
     // 自有邮箱或被授权的公共邮箱均可发信
-    const sendable = await accessibleAddressIds(db, user.id);
+    const sendable = await sendableAddressIds(db, user.id);
     if (!from || (from.type !== "mailbox" && from.type !== "shared") || !sendable.includes(from.id)) {
       return c.json({ error: "发件地址无效或不属于你" }, 422);
     }
@@ -711,7 +700,7 @@ export const messageRoutes = new Hono<AppEnv>()
     const from = await db.query.emailAddresses.findFirst({
       where: eq(emailAddresses.id, b.fromAddressId),
     });
-    const draftable = await accessibleAddressIds(db, user.id);
+    const draftable = await sendableAddressIds(db, user.id);
     if (!from || !draftable.includes(from.id)) return c.json({ error: "发件地址无效" }, 422);
 
     const values = {
@@ -746,7 +735,7 @@ export const messageRoutes = new Hono<AppEnv>()
     const user = c.var.user!;
     const { addressId, to, raw } = c.req.valid("json");
 
-    const accessible = await accessibleAddressIds(db, user.id);
+    const accessible = await readableAddressIds(db, user.id);
     let envelopeTo = to;
     if (!envelopeTo && addressId) {
       const addr = await db.query.emailAddresses.findFirst({
@@ -813,7 +802,7 @@ export const messageRoutes = new Hono<AppEnv>()
     if (m.inReplyTo) chain.add(m.inReplyTo);
     for (const r of (m.references ?? "").split(/\s+/).filter(Boolean)) chain.add(r);
 
-    const ids = await accessibleAddressIds(db, c.var.user!.id);
+    const ids = await readableAddressIds(db, c.var.user!.id);
     const ors = [eq(messages.id, m.id)];
     if (chain.size) ors.push(inArray(messages.messageId, [...chain]));
     if (m.messageId) {
