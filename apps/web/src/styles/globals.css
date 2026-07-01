@@ -10,8 +10,67 @@ body,
   height: 100%;
 }
 
+html {
+  /* 禁止双击缩放，保留单指滚动 */
+  touch-action: manipulation;
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   @apply bg-background text-foreground antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+
+/* ── 移动端 / PWA 安全区与底部导航留白 ── */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --mobile-nav-height: 3.5rem;
+}
+
+.safe-top {
+  padding-top: var(--safe-top);
+}
+
+.safe-bottom {
+  padding-bottom: calc(var(--safe-bottom) + var(--mobile-nav-height));
+}
+
+.mobile-bottom-nav {
+  padding-bottom: var(--safe-bottom);
+}
+
+.mobile-pad-bottom {
+  padding-bottom: calc(var(--safe-bottom) + var(--mobile-nav-height));
+}
+
+.mobile-pwa-prompt {
+  /* 桌面端不受底部导航影响 */
+}
+
+@media (min-width: 640px) {
+  .mobile-pwa-prompt {
+    bottom: 1rem;
+  }
+}
+
+/* iOS 输入框聚焦时不自动放大（需 >= 16px） */
+@media (max-width: 639px) {
+  input,
+  textarea,
+  select,
+  .tiptap {
+    font-size: 16px !important;
+  }
+}
+
+/* 移动端可点击区域最小高度 */
+@media (max-width: 639px) {
+  .touch-target {
+    min-height: 2.75rem;
+    min-width: 2.75rem;
+  }
 }
 
 /* ── TipTap 富文本编辑器内容区 ── */

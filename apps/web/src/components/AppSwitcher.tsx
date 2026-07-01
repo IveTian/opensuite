@@ -45,7 +45,7 @@ export function AppSwitcher({ current, label }: { current: string; label?: strin
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="flex max-w-full items-center gap-2 rounded-xl px-1.5 py-1 outline-none hover:bg-surface-secondary focus-visible:ring-2 focus-visible:ring-focus/50"
+        className="flex max-w-full items-center gap-2 rounded-xl px-2 py-2 outline-none hover:bg-surface-secondary focus-visible:ring-2 focus-visible:ring-focus/50 sm:px-1.5 sm:py-1"
       >
         <BrandMark />
         <span className="truncate text-sm font-semibold text-foreground">{siteName}</span>

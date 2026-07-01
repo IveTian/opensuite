@@ -17,15 +17,23 @@ import { Plans } from "./pages/admin/Plans";
 import { Invites } from "./pages/admin/Invites";
 import { Settings } from "./pages/admin/Settings";
 import { Audit } from "./pages/admin/Audit";
+import { OfflineBanner } from "./components/OfflineBanner";
+import { MobileBottomNav } from "./components/MobileBottomNav";
+import { PwaInstallPrompt } from "./components/PwaInstallPrompt";
 import { ThemeProvider } from "./providers/theme";
 import { BrandingProvider } from "./providers/branding";
+import { MobileChromeProvider } from "./providers/mobile-chrome";
 
 export function App() {
   return (
     <ThemeProvider>
       <BrandingProvider>
-        <BrowserRouter>
-        <Routes>
+        <MobileChromeProvider>
+        <div className="flex h-full flex-col">
+          <OfflineBanner />
+          <div className="min-h-0 flex-1">
+            <BrowserRouter>
+            <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
 
@@ -56,7 +64,12 @@ export function App() {
 
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
-        </BrowserRouter>
+            <MobileBottomNav />
+            </BrowserRouter>
+          </div>
+          <PwaInstallPrompt />
+        </div>
+        </MobileChromeProvider>
       </BrandingProvider>
     </ThemeProvider>
   );

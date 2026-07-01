@@ -1,5 +1,5 @@
 import { Button } from "@heroui/react";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import type { DirectoryEntry, DirectoryPayload, PersonalContact } from "@mailflare/shared";
 import { AppSwitcher } from "../../components/AppSwitcher";
@@ -14,8 +14,10 @@ import {
   UsersIcon,
 } from "../../components/icons";
 import { useFetch } from "../../hooks/useFetch";
+import { useIsMobile } from "../../hooks/useIsMobile";
 import { api, ApiError } from "../../lib/api";
 import { useSession } from "../../lib/auth-client";
+import { useMobileChrome } from "../../providers/mobile-chrome";
 import { useTheme } from "../../providers/theme";
 import { ContactDetail, type ContactView } from "./ContactDetail";
 import { PersonalContactForm } from "./PersonalContactForm";
@@ -30,6 +32,8 @@ const NO_DEPT = "__none__";
 
 export function Contacts() {
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
+  const { setHideBottomNav } = useMobileChrome();
   const { theme, toggle } = useTheme();
   const { data: session } = useSession();
   const image = (session?.user as { image?: string | null } | undefined)?.image ?? null;
@@ -148,10 +152,15 @@ export function Contacts() {
         ? entries.filter((e) => e.departmentId === id).length
         : entries.length;
 
+  useEffect(() => {
+    setHideBottomNav(isMobile && Boolean(selected));
+    return () => setHideBottomNav(false);
+  }, [isMobile, selected, setHideBottomNav]);
+
   return (
-    <div className="flex h-full flex-col bg-background">
+    <div className="flex h-full flex-col bg-background mobile-pad-bottom">
       {/* 顶栏 */}
-      <header className="flex shrink-0 items-center justify-between border-b border-border px-4 py-2.5 sm:px-6">
+      <header className="safe-top flex shrink-0 items-center justify-between border-b border-border px-4 py-2.5 sm:px-6">
         <AppSwitcher current="contacts" />
         <div className="flex items-center gap-1.5">
           <Button variant="ghost" isIconOnly aria-label="切换主题" onClick={toggle}>
@@ -233,11 +242,33 @@ export function Contacts() {
               个人
             </TabButton>
             {tab === "personal" && (
-              <Button size="sm" variant="ghost" isIconOnly aria-label="新建" onClick={() => setFormOpen({})}>
+              <Button size="sm" variant="ghost" isIconOnly className="touch-target" aria-label="新建" onClick={() => setFormOpen({})}>
                 <PlusIcon className="size-4" />
               </Button>
             )}
           </div>
+
+          {/* 移动端部门筛选 */}
+          {tab === "org" && (
+            <div className="flex gap-2 overflow-x-auto border-b border-border px-3 py-2 md:hidden [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <DeptPill active={deptId === null} count={deptCount(null)} onClick={() => setDeptId(null)}>
+                全部
+              </DeptPill>
+              {departments.map((d) => (
+                <DeptPill
+                  key={d.id}
+                  active={deptId === d.id}
+                  count={deptCount(d.id)}
+                  onClick={() => setDeptId(d.id)}
+                >
+                  {d.name}
+                </DeptPill>
+              ))}
+              <DeptPill active={deptId === NO_DEPT} count={deptCount(NO_DEPT)} onClick={() => setDeptId(NO_DEPT)}>
+                未分组
+              </DeptPill>
+            </div>
+          )}
 
           {/* 搜索 */}
           <div className="border-b border-border p-3">
@@ -361,13 +392,40 @@ function TabButton({
     <button
       onClick={onClick}
       className={
-        "flex-1 rounded-lg px-3 py-1.5 text-sm transition-colors " +
+        "min-h-11 flex-1 rounded-lg px-3 py-2 text-sm transition-colors md:min-h-0 md:py-1.5 " +
         (active
           ? "bg-surface font-medium text-foreground shadow-surface"
           : "text-muted hover:text-foreground")
       }
     >
       {children}
+    </button>
+  );
+}
+
+function DeptPill({
+  active,
+  count,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  count: number;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={
+        "touch-target shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-sm " +
+        (active
+          ? "bg-accent font-medium text-accent-foreground"
+          : "bg-surface-secondary text-muted")
+      }
+    >
+      {children}
+      <span className="ml-1 tabular-nums opacity-80">{count}</span>
     </button>
   );
 }

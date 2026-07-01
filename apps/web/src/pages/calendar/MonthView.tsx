@@ -62,7 +62,7 @@ export function MonthView({
                 <button
                   type="button"
                   onClick={() => onCreateAt(day)}
-                  className="text-muted opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+                  className="touch-target text-base text-muted opacity-100 transition-opacity hover:text-foreground sm:opacity-0 sm:group-hover:opacity-100"
                   aria-label="新建事件"
                 >
                   +

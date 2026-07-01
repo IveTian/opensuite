@@ -1,5 +1,6 @@
 import { adminClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
+import { clearSessionCache } from "./offline/session-cache";
 
 /**
  * Better Auth 客户端。
@@ -15,4 +16,10 @@ export const authClient = createAuthClient({
   },
 });
 
-export const { useSession, signIn, signOut } = authClient;
+export const { useSession, signIn } = authClient;
+
+/** 登出并清除离线会话缓存 */
+export async function signOut() {
+  clearSessionCache();
+  await authClient.signOut();
+}
