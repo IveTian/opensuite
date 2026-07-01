@@ -2,13 +2,14 @@ import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/r
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
 import Placeholder from "@tiptap/extension-placeholder";
-import { Color, TextStyle } from "@tiptap/extension-text-style";
+import { Color, TextStyle, FontFamily, FontSize } from "@tiptap/extension-text-style";
 import TextAlign from "@tiptap/extension-text-align";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   BoldIcon,
+  CheckIcon,
+  ChevronDownIcon,
   CodeIcon,
-  HeadingIcon,
   ImageIcon,
   ItalicIcon,
   LinkIcon,
@@ -18,10 +19,19 @@ import {
   QuoteIcon,
   RedoIcon,
   RemoveFormattingIcon,
+  SearchIcon,
   StrikethroughIcon,
   UnderlineIcon,
   UndoIcon,
 } from "./icons";
+import {
+  SYSTEM_FONTS,
+  fetchGoogleFonts,
+  loadGoogleFont,
+  googleFontCss,
+  primaryFontName,
+  type FontOption,
+} from "../lib/google-fonts";
 
 export interface RichTextEditorProps {
   /** 初始 HTML 内容 */
@@ -69,6 +79,8 @@ export default function RichTextEditor({
       }),
       TextStyle,
       Color,
+      FontFamily,
+      FontSize,
       TextAlign.configure({ types: ["heading", "paragraph"] }),
       Image.configure({ inline: false, allowBase64: true }),
       Placeholder.configure({ placeholder }),
@@ -123,7 +135,11 @@ export default function RichTextEditor({
       italic: e?.isActive("italic") ?? false,
       underline: e?.isActive("underline") ?? false,
       strike: e?.isActive("strike") ?? false,
+      h1: e?.isActive("heading", { level: 1 }) ?? false,
       h2: e?.isActive("heading", { level: 2 }) ?? false,
+      h3: e?.isActive("heading", { level: 3 }) ?? false,
+      fontSize: (e?.getAttributes("textStyle").fontSize as string) ?? "",
+      fontFamily: (e?.getAttributes("textStyle").fontFamily as string) ?? "",
       bulletList: e?.isActive("bulletList") ?? false,
       orderedList: e?.isActive("orderedList") ?? false,
       blockquote: e?.isActive("blockquote") ?? false,
@@ -183,6 +199,11 @@ export default function RichTextEditor({
           <RedoIcon className="size-4" />
         </ToolBtn>
         <Divider />
+        {/* 段落 / 标题、字体、字号 */}
+        <BlockDropdown editor={editor} h1={state?.h1} h2={state?.h2} h3={state?.h3} />
+        <FontDropdown editor={editor} fontFamily={state?.fontFamily ?? ""} />
+        <SizeDropdown editor={editor} fontSize={state?.fontSize ?? ""} />
+        <Divider />
         <ToolBtn label="加粗" active={state?.bold} onClick={() => editor.chain().focus().toggleBold().run()}>
           <BoldIcon className="size-4" />
         </ToolBtn>
@@ -202,13 +223,6 @@ export default function RichTextEditor({
           onClick={() => editor.chain().focus().toggleStrike().run()}
         >
           <StrikethroughIcon className="size-4" />
-        </ToolBtn>
-        <ToolBtn
-          label="标题"
-          active={state?.h2}
-          onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-        >
-          <HeadingIcon className="size-4" />
         </ToolBtn>
         <button
           type="button"
@@ -356,4 +370,257 @@ function ToolBtn({
 
 function Divider() {
   return <span className="mx-0.5 h-5 w-px bg-separator" />;
+}
+
+/** 工具栏通用下拉：按钮显示当前值，点开弹出菜单，点击外部关闭 */
+function Dropdown({
+  label,
+  title,
+  minWidth,
+  align = "left",
+  children,
+}: {
+  label: ReactNode;
+  title: string;
+  minWidth?: number;
+  align?: "left" | "right";
+  children: (close: () => void) => ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        title={title}
+        aria-label={title}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => setOpen((v) => !v)}
+        className="flex h-8 items-center gap-1 rounded-lg px-2 text-xs text-muted hover:bg-surface-secondary hover:text-foreground"
+      >
+        {label}
+        <ChevronDownIcon className="size-3.5 shrink-0" />
+      </button>
+      {open && (
+        <div
+          className={
+            "absolute top-9 z-20 max-h-72 overflow-auto rounded-xl border border-border bg-surface p-1 shadow-overlay " +
+            (align === "right" ? "right-0" : "left-0")
+          }
+          style={minWidth ? { minWidth } : undefined}
+        >
+          {children(() => setOpen(false))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MenuItem({
+  active,
+  onClick,
+  children,
+  style,
+}: {
+  active?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+  style?: CSSProperties;
+}) {
+  return (
+    <button
+      type="button"
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onClick}
+      className={
+        "flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm " +
+        (active ? "bg-surface-secondary text-foreground" : "text-foreground hover:bg-surface-secondary")
+      }
+      style={style}
+    >
+      {children}
+    </button>
+  );
+}
+
+const BLOCKS = [
+  { key: "paragraph", label: "正文", cls: "text-sm" },
+  { key: "h1", label: "标题 1", cls: "text-lg font-bold" },
+  { key: "h2", label: "标题 2", cls: "text-base font-semibold" },
+  { key: "h3", label: "标题 3", cls: "text-sm font-semibold" },
+] as const;
+
+/** 段落 / 标题级别下拉 */
+function BlockDropdown({
+  editor,
+  h1,
+  h2,
+  h3,
+}: {
+  editor: Editor;
+  h1?: boolean;
+  h2?: boolean;
+  h3?: boolean;
+}) {
+  const current = h1 ? "h1" : h2 ? "h2" : h3 ? "h3" : "paragraph";
+  const currentLabel = BLOCKS.find((b) => b.key === current)?.label ?? "正文";
+  function apply(key: string) {
+    const c = editor.chain().focus();
+    if (key === "paragraph") c.setParagraph().run();
+    else c.setHeading({ level: Number(key.slice(1)) as 1 | 2 | 3 }).run();
+  }
+  return (
+    <Dropdown
+      title="段落样式"
+      minWidth={132}
+      label={<span className="w-12 truncate text-left">{currentLabel}</span>}
+    >
+      {(close) =>
+        BLOCKS.map((b) => (
+          <MenuItem
+            key={b.key}
+            active={b.key === current}
+            onClick={() => {
+              apply(b.key);
+              close();
+            }}
+          >
+            <span className={b.cls}>{b.label}</span>
+            {b.key === current && <CheckIcon className="size-3.5 shrink-0 text-accent" />}
+          </MenuItem>
+        ))
+      }
+    </Dropdown>
+  );
+}
+
+const SIZES = ["12", "14", "16", "18", "20", "24", "28", "32", "36"];
+
+/** 字号下拉（写入 inline font-size，随邮件送达收件端） */
+function SizeDropdown({ editor, fontSize }: { editor: Editor; fontSize: string }) {
+  const cur = fontSize ? String(parseInt(fontSize, 10)) : "";
+  return (
+    <Dropdown
+      title="字号"
+      minWidth={96}
+      label={<span className="w-8 truncate text-left tabular-nums">{cur || "字号"}</span>}
+    >
+      {(close) => (
+        <>
+          <MenuItem
+            active={!cur}
+            onClick={() => {
+              editor.chain().focus().unsetFontSize().run();
+              close();
+            }}
+          >
+            默认
+          </MenuItem>
+          {SIZES.map((s) => (
+            <MenuItem
+              key={s}
+              active={cur === s}
+              onClick={() => {
+                editor.chain().focus().setFontSize(`${s}px`).run();
+                close();
+              }}
+            >
+              <span className="tabular-nums">{s}</span>
+              {cur === s && <CheckIcon className="size-3.5 shrink-0 text-accent" />}
+            </MenuItem>
+          ))}
+        </>
+      )}
+    </Dropdown>
+  );
+}
+
+/** 字体下拉：系统字体 + Google Fonts（带搜索），选中即加载 web 字体做预览 */
+function FontDropdown({ editor, fontFamily }: { editor: Editor; fontFamily: string }) {
+  const [fonts, setFonts] = useState<FontOption[]>([]);
+  const [q, setQ] = useState("");
+  const current = primaryFontName(fontFamily);
+
+  useEffect(() => {
+    let alive = true;
+    void fetchGoogleFonts().then((f) => {
+      if (alive) setFonts(f);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const kw = q.trim().toLowerCase();
+  const filtered = (kw ? fonts.filter((f) => f.family.toLowerCase().includes(kw)) : fonts).slice(0, 80);
+
+  return (
+    <Dropdown
+      title="字体"
+      minWidth={208}
+      label={<span className="w-16 truncate text-left">{current || "字体"}</span>}
+    >
+      {(close) => (
+        <div className="flex flex-col">
+          {/* 搜索框（滚动时固定在顶部） */}
+          <div className="sticky top-0 z-10 mb-1 flex items-center gap-1.5 rounded-lg bg-surface-secondary px-2 py-1">
+            <SearchIcon className="size-3.5 shrink-0 text-muted" />
+            <input
+              autoFocus
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="搜索字体…"
+              className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted"
+            />
+          </div>
+          {/* 系统安全字体 */}
+          {SYSTEM_FONTS.map((sf) => (
+            <MenuItem
+              key={sf.label}
+              active={sf.value ? primaryFontName(sf.value) === current : !current}
+              onClick={() => {
+                if (sf.value) editor.chain().focus().setFontFamily(sf.value).run();
+                else editor.chain().focus().unsetFontFamily().run();
+                close();
+              }}
+            >
+              <span style={{ fontFamily: sf.value || undefined }} className="truncate">
+                {sf.label}
+              </span>
+              {(sf.value ? primaryFontName(sf.value) === current : !current) && (
+                <CheckIcon className="size-3.5 shrink-0 text-accent" />
+              )}
+            </MenuItem>
+          ))}
+          <div className="my-1 border-t border-border" />
+          {/* Google Fonts */}
+          {filtered.length === 0 && (
+            <p className="px-2.5 py-2 text-xs text-muted">{fonts.length ? "无匹配字体" : "加载中…"}</p>
+          )}
+          {filtered.map((f) => (
+            <MenuItem
+              key={f.family}
+              active={f.family === current}
+              onClick={() => {
+                loadGoogleFont(f.family);
+                editor.chain().focus().setFontFamily(googleFontCss(f.family, f.category)).run();
+                close();
+              }}
+            >
+              <span className="truncate">{f.family}</span>
+              {f.family === current && <CheckIcon className="size-3.5 shrink-0 text-accent" />}
+            </MenuItem>
+          ))}
+        </div>
+      )}
+    </Dropdown>
+  );
 }

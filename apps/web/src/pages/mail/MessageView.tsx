@@ -349,48 +349,48 @@ export function MessageView({
           离线缓存 · {error ? `${error} · ` : ""}部分操作需联网后可用
         </p>
       )}
-      <div className="mb-4 flex items-start justify-between gap-4">
-        <h1 className="text-lg font-semibold text-foreground sm:text-xl">{m.subject || "(无主题)"}</h1>
-        <div className="hidden shrink-0 flex-wrap items-center gap-2 sm:flex">
-          <Button size="sm" variant="ghost" isIconOnly aria-label={m.isStarred ? "取消星标" : "星标"} onClick={star}>
-            {m.isStarred ? (
-              <StarFilledIcon className="size-4 text-warning" />
-            ) : (
-              <StarIcon className="size-4" />
-            )}
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => onReply(m)}>
-            <ReplyIcon className="size-4" />
-            回复
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => onForward(m)}>
-            <ForwardIcon className="size-4" />
-            转发
-          </Button>
-          <Button size="sm" variant="ghost" onClick={createEvent}>
-            <CalendarIcon className="size-4" />
-            创建事件
-          </Button>
-          {m.folder !== "archive" && m.folder !== "trash" && (
-            <Button size="sm" variant="ghost" onClick={archive}>
-              <ArchiveIcon className="size-4" />
-              归档
-            </Button>
+      <h1 className="mb-4 text-lg font-semibold text-foreground sm:text-xl">{m.subject || "(无主题)"}</h1>
+
+      {/* 工具菜单栏：标题下方、发件人上方（桌面端；移动端见底部固定栏） */}
+      <div className="mb-4 hidden flex-wrap items-center gap-2 sm:flex">
+        <Button size="sm" variant="ghost" isIconOnly aria-label={m.isStarred ? "取消星标" : "星标"} onClick={star}>
+          {m.isStarred ? (
+            <StarFilledIcon className="size-4 text-warning" />
+          ) : (
+            <StarIcon className="size-4" />
           )}
-          <Button size="sm" variant="ghost" isIconOnly aria-label="标为未读" onClick={markUnread}>
-            <MailOpenIcon className="size-4" />
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => onReply(m)}>
+          <ReplyIcon className="size-4" />
+          回复
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => onForward(m)}>
+          <ForwardIcon className="size-4" />
+          转发
+        </Button>
+        <Button size="sm" variant="ghost" onClick={createEvent}>
+          <CalendarIcon className="size-4" />
+          创建事件
+        </Button>
+        {m.folder !== "archive" && m.folder !== "trash" && (
+          <Button size="sm" variant="ghost" onClick={archive}>
+            <ArchiveIcon className="size-4" />
+            归档
           </Button>
-          <a
-            href={`${API}/api/me/messages/${m.id}/raw`}
-            className="self-center px-1 text-sm text-accent"
-          >
-            原文
-          </a>
-          <Button size="sm" variant="danger-soft" onClick={remove}>
-            <TrashIcon className="size-4" />
-            {m.folder === "trash" ? "彻底删除" : "删除"}
-          </Button>
-        </div>
+        )}
+        <Button size="sm" variant="ghost" isIconOnly aria-label="标为未读" onClick={markUnread}>
+          <MailOpenIcon className="size-4" />
+        </Button>
+        <a
+          href={`${API}/api/me/messages/${m.id}/raw`}
+          className="self-center px-1 text-sm text-accent"
+        >
+          原文
+        </a>
+        <Button size="sm" variant="danger-soft" onClick={remove}>
+          <TrashIcon className="size-4" />
+          {m.folder === "trash" ? "彻底删除" : "删除"}
+        </Button>
       </div>
 
       <div className="mb-4 flex items-start gap-3">
