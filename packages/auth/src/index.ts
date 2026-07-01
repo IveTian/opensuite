@@ -1,6 +1,6 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { admin } from "better-auth/plugins";
+import { admin, jwt, oidcProvider } from "better-auth/plugins";
 import { eq } from "drizzle-orm";
 import type { Database } from "@mailflare/db";
 import { schema, systemSettings, userQuota } from "@mailflare/db";
@@ -78,6 +78,44 @@ export function createAuth(db: Database, env: AuthEnv) {
         defaultRole: "user",
         adminRoles: ["admin"],
         ...(env.SUPER_ADMIN_ID ? { adminUserIds: [env.SUPER_ADMIN_ID] } : {}),
+      }),
+      // JWT/JWKS：让 OIDC 的 id_token 用 RS256 非对称签名（多数第三方 OIDC 客户端要求），
+      // 并在 /api/auth/jwks 暴露公钥。disableSettingJwtHeader：会话响应不再附带 JWT（OIDC 场景无需）。
+      jwt({
+        jwks: { keyPairConfig: { alg: "RS256", modulusLength: 2048 } },
+        disableSettingJwtHeader: true,
+      }),
+      // OIDC Provider：把 MailFlare 变成身份提供方（IdP），第三方应用可「用 MailFlare 登录」。
+      // - loginPage/consentPage 指向前端 SPA；未登录会带原始授权参数跳登录页，登录后自动回到 authorize。
+      // - useJWTPlugin：用上面的 jwt 插件做 RS256 签名 + JWKS 发现。
+      // - storeClientSecret:"hashed"：数据库只存 client_secret 的哈希（明文仅在创建时返回一次）。
+      oidcProvider({
+        loginPage: `${env.WEB_ORIGIN}/login`,
+        consentPage: `${env.WEB_ORIGIN}/oauth/consent`,
+        useJWTPlugin: true,
+        requirePKCE: true,
+        storeClientSecret: "hashed",
+        // 插件在本版本被标记为将迁移到 @better-auth/oauth-provider（尚未发布），本版本仍应使用它。
+        __skipDeprecationWarning: true,
+        // 附加声明：按请求的 scope 往 id_token / userinfo 注入业务字段。
+        getAdditionalUserInfoClaim: (user, scopes) => {
+          const u = user as typeof user & {
+            role?: string | null;
+            locale?: string | null;
+            approvalStatus?: string | null;
+          };
+          const claims: Record<string, unknown> = {};
+          if (scopes.includes("profile")) {
+            claims.preferred_username = u.name;
+            claims.role = u.role ?? "user";
+            if (u.locale) claims.locale = u.locale;
+          }
+          if (scopes.includes("email")) {
+            claims.email = u.email;
+            claims.email_verified = u.emailVerified;
+          }
+          return claims;
+        },
       }),
     ],
 

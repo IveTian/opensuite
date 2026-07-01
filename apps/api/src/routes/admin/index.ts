@@ -6,6 +6,7 @@ import { auditRoutes } from "./audit.js";
 import { directoryRoutes } from "./directory.js";
 import { domainRoutes } from "./domains.js";
 import { inviteRoutes } from "./invites.js";
+import { oauthAppRoutes } from "./oauth-apps.js";
 import { planRoutes } from "./plans.js";
 import { settingsRoutes } from "./settings.js";
 import { statsRoutes } from "./stats.js";
@@ -24,4 +25,5 @@ export const adminRoutes = new Hono<AppEnv>()
   .route("/users", userRoutes)
   .route("/plans", planRoutes)
   .route("/invite-codes", inviteRoutes)
+  .route("/oauth-apps", oauthAppRoutes)
   .route("/audit", auditRoutes);

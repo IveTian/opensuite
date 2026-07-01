@@ -23,10 +23,20 @@ export function Login() {
     e.preventDefault();
     setError("");
     setLoading(true);
-    const { error } = await signIn.email({ email, password });
+    const { data, error } = await signIn.email({ email, password });
     setLoading(false);
     if (error) {
       setError(error.message || "登录失败");
+      return;
+    }
+    // OIDC 授权流程：Better Auth 在登录后会重跑 authorize 并返回 { redirect, url }，
+    // 客户端 redirectPlugin 会自动跳转到同意页 / 回调地址。若未返回，则用地址栏里的
+    // 原始授权参数手动回到 authorize 端点兜底。
+    const redirect = data as { redirect?: boolean; url?: string } | undefined;
+    if (redirect?.redirect && redirect.url) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.has("client_id")) {
+      window.location.href = `${import.meta.env.VITE_API_ORIGIN}/api/auth/oauth2/authorize?${params.toString()}`;
       return;
     }
     navigate("/");

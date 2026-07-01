@@ -14,6 +14,7 @@ import { PersonAvatar } from "../components/PersonAvatar";
 import { BrandMark } from "../components/BrandMark";
 import { useTheme } from "../providers/theme";
 import { useBranding } from "../providers/branding";
+import { useFetch } from "../hooks/useFetch";
 import { signOut, useSession } from "../lib/auth-client";
 
 export interface AppEntry {
@@ -59,6 +60,19 @@ export const APPS: AppEntry[] = [
   },
 ];
 
+/** 第三方 SSO 应用（挂在应用中心的 OIDC 应用），点击跳到其登录地址走单点登录 */
+interface SsoApp {
+  clientId: string;
+  name: string;
+  icon: string | null;
+  launchUrl: string | null;
+}
+
+const TILE_BASE =
+  "flex size-20 items-center justify-center overflow-hidden rounded-[22px] text-white shadow-surface " +
+  "transition duration-200 group-hover:-translate-y-1 group-hover:shadow-lg " +
+  "group-active:scale-95 group-focus-visible:ring-2 group-focus-visible:ring-focus/60 ";
+
 /** 单个应用磁贴：圆角图标 + 名称，点击进入应用 */
 function AppTile({ app, onOpen }: { app: AppEntry; onOpen: () => void }) {
   const { Icon } = app;
@@ -68,17 +82,35 @@ function AppTile({ app, onOpen }: { app: AppEntry; onOpen: () => void }) {
       className="group flex w-24 flex-col items-center gap-2.5 outline-none"
       aria-label={app.name}
     >
-      <span
-        className={
-          "flex size-20 items-center justify-center rounded-[22px] text-white shadow-surface " +
-          "transition duration-200 group-hover:-translate-y-1 group-hover:shadow-lg " +
-          "group-active:scale-95 group-focus-visible:ring-2 group-focus-visible:ring-focus/60 " +
-          app.tile
-        }
-      >
+      <span className={TILE_BASE + app.tile}>
         <Icon className="size-10" />
       </span>
       <span className="text-sm text-foreground">{app.name}</span>
+    </button>
+  );
+}
+
+/** 第三方 SSO 磁贴：有图标显示图标，否则用名称首字母的渐变兜底 */
+function SsoTile({ app }: { app: SsoApp }) {
+  return (
+    <button
+      onClick={() => {
+        if (app.launchUrl) window.location.href = app.launchUrl;
+      }}
+      className="group flex w-24 flex-col items-center gap-2.5 outline-none"
+      aria-label={app.name}
+      title={`打开 ${app.name}`}
+    >
+      {app.icon ? (
+        <span className={TILE_BASE + "bg-surface-secondary"}>
+          <img src={app.icon} alt="" className="size-full object-cover" />
+        </span>
+      ) : (
+        <span className={TILE_BASE + "bg-gradient-to-br from-amber-400 to-orange-600 text-2xl font-semibold"}>
+          {app.name.slice(0, 1).toUpperCase()}
+        </span>
+      )}
+      <span className="truncate text-sm text-foreground">{app.name}</span>
     </button>
   );
 }
@@ -92,6 +124,7 @@ export function Home() {
   const image = (session?.user as { image?: string | null } | undefined)?.image ?? null;
 
   const apps = APPS.filter((a) => !a.adminOnly || role === "admin");
+  const { data: ssoApps } = useFetch<SsoApp[]>("/api/me/sso-apps");
 
   return (
     <div className="flex h-full flex-col bg-background mobile-pad-bottom">
@@ -141,6 +174,7 @@ export function Home() {
           {apps.map((app) => (
             <AppTile key={app.key} app={app} onOpen={() => navigate(app.to)} />
           ))}
+          {ssoApps?.map((app) => <SsoTile key={app.clientId} app={app} />)}
         </div>
       </main>
     </div>

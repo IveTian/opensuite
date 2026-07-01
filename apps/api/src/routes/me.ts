@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import {
   domains,
   emailAddresses,
+  oauthApplication,
   systemSettings,
   user,
   userQuota,
@@ -61,6 +62,40 @@ export const meRoutes = new Hono<AppEnv>()
     return c.json(quota ?? null);
   })
 
+  /**
+   * 应用中心（Launchpad）的第三方 SSO 磁贴：已启用、且管理员标记 showInLauncher 并配了 launchUrl 的 OIDC 应用。
+   * 点击磁贴即跳到应用自身的登录地址，应用再走标准 OIDC 回到 MailFlare（已登录 + 已授权则无感直达）。
+   */
+  .get("/sso-apps", async (c) => {
+    const rows = await c.var.db
+      .select({
+        clientId: oauthApplication.clientId,
+        name: oauthApplication.name,
+        icon: oauthApplication.icon,
+        disabled: oauthApplication.disabled,
+        metadata: oauthApplication.metadata,
+      })
+      .from(oauthApplication);
+    const apps = rows
+      .filter((r) => !r.disabled)
+      .map((r) => {
+        let launchUrl: string | null = null;
+        let showInLauncher = false;
+        if (r.metadata) {
+          try {
+            const m = JSON.parse(r.metadata) as { launchUrl?: string; showInLauncher?: boolean };
+            launchUrl = typeof m.launchUrl === "string" ? m.launchUrl : null;
+            showInLauncher = Boolean(m.showInLauncher);
+          } catch {
+            /* metadata 非法 JSON 时忽略 */
+          }
+        }
+        return { clientId: r.clientId, name: r.name, icon: r.icon, launchUrl, showInLauncher };
+      })
+      .filter((a) => a.showInLauncher && a.launchUrl);
+    return c.json(apps);
+  })
+
   .get("/addresses", async (c) => {
     const u = c.var.user!;
     const rows = await c.var.db
@@ -79,6 +114,16 @@ export const meRoutes = new Hono<AppEnv>()
       .innerJoin(domains, eq(emailAddresses.domainId, domains.id))
       .where(eq(emailAddresses.userId, u.id));
     return c.json(rows);
+  })
+
+  /** OIDC 同意页展示用：按 clientId 取应用名与图标（需登录，不泄露 secret） */
+  .get("/oauth-clients/:clientId", async (c) => {
+    const app = await c.var.db.query.oauthApplication.findFirst({
+      where: eq(oauthApplication.clientId, c.req.param("clientId")),
+      columns: { name: true, icon: true, disabled: true },
+    });
+    if (!app || app.disabled) return c.json({ error: "应用不存在" }, 404);
+    return c.json({ name: app.name, icon: app.icon });
   })
 
   /** 侧栏账号切换器：自有邮箱 + 被授权的公共邮箱 */

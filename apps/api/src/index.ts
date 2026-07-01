@@ -6,6 +6,7 @@ import type { AppEnv, Bindings } from "./env.js";
 import { runCalendarReminders } from "./lib/calendar-reminders.js";
 import { runDailyMaintenance } from "./lib/cron.js";
 import { runScheduledMail } from "./lib/outbound-mail.js";
+import { loadUser } from "./middleware/auth.js";
 import { contextMiddleware } from "./middleware/context.js";
 import { adminRoutes } from "./routes/admin/index.js";
 import { calendarRoutes } from "./routes/calendar.js";
@@ -37,12 +38,31 @@ app.get("/api/health", async (c) => {
   return c.json({ ok: true });
 });
 
+// 3.1) OIDC 发现文档的「颁发者根路径」别名：
+//   Better Auth 的发现端点在 /api/auth/.well-known/openid-configuration，
+//   但严格的第三方客户端会按 issuer 根去 {API_ORIGIN}/.well-known/openid-configuration 取。
+//   这里补一个顶层别名（公开元数据，允许跨域），复用插件生成的同一份配置。
+app.get("/.well-known/openid-configuration", contextMiddleware, async (c) => {
+  const config = await c.var.auth.api.getOpenIdConfig();
+  return c.json(config, 200, { "access-control-allow-origin": "*" });
+});
+
 // 4) 拦截原生注册端点，强制走带策略校验的 /api/public/sign-up
 app.post("/api/auth/sign-up/email", (c) =>
   c.json({ error: "请通过 /api/public/sign-up 注册" }, 403),
 );
 
-// 5) Better Auth：处理 /api/auth/*（登录、登出、会话、admin 插件等）
+// 4.1) OIDC 授权前置守卫：待审核 / 已封禁用户即便有会话，也不得为第三方应用签发令牌。
+//   （requireAuth 只挂在业务路由上，授权端点由 Better Auth 直接处理，故在此单独拦截。）
+app.use("/api/auth/oauth2/authorize", loadUser, async (c, next) => {
+  const u = c.var.user;
+  if (u && (u.approvalStatus === "pending" || u.banned)) {
+    return c.json({ error: "账号待管理员审核或已被封禁，无法授权第三方应用" }, 403);
+  }
+  await next();
+});
+
+// 5) Better Auth：处理 /api/auth/*（登录、登出、会话、admin / jwt / oidc 插件等）
 app.on(["GET", "POST"], "/api/auth/*", (c) => c.var.auth.handler(c.req.raw));
 
 // 6) 业务路由
