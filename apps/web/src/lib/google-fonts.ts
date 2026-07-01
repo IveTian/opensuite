@@ -58,8 +58,9 @@ function fallbackFor(category?: string): string {
     case "monospace":
       return "monospace";
     case "handwriting":
-    case "display":
       return "cursive";
+    case "display":
+      return "Impact, Haettenschweiler, 'Arial Narrow Bold', 'Arial Narrow', sans-serif";
     default:
       return "sans-serif";
   }

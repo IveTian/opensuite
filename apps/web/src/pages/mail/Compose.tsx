@@ -56,16 +56,13 @@ export function Compose({
   addresses,
   initial,
   personalSignatureHtml,
-  orgSignatureHtml,
   onClose,
   onSent,
 }: {
   addresses: Addr[];
   initial?: ComposeInitial;
-  /** 个人签名；公共邮箱可配置禁用 */
+  /** 个人签名会在编辑器中显示；组织/公共邮箱签名由后端发送时追加 */
   personalSignatureHtml?: string | null;
-  /** 组织签名；所有账号通用 */
-  orgSignatureHtml?: string | null;
   onClose: () => void;
   onSent: () => void;
 }) {
@@ -73,8 +70,6 @@ export function Compose({
   const initialAddress = addresses.find((a) => a.id === initialFromAddressId);
   const initialSignatureParts = [
     initialAddress?.sharedDisablePersonalSignature ? null : personalSignatureHtml,
-    initialAddress?.sharedSignatureHtml,
-    orgSignatureHtml,
   ].filter(Boolean);
   const initialSignatureHtml = initialSignatureParts.join("<br>");
   const baseHtml =

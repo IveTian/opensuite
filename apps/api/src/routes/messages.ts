@@ -22,6 +22,7 @@ import {
   emailAddresses,
   eventAttendees,
   messages,
+  systemSettings,
   userQuota,
 } from "@mailflare/db";
 import type { Database } from "@mailflare/db";
@@ -29,6 +30,7 @@ import {
   bulkActionSchema,
   saveDraftSchema,
   sendMessageSchema,
+  SYSTEM_SETTINGS_ID,
   updateMessageSchema,
 } from "@mailflare/shared";
 import { z } from "zod";
@@ -98,6 +100,59 @@ interface CalendarInvitePreview {
 }
 
 const INVITE_PARTSTATS = new Set<InvitePartstat>(["needs-action", "accepted", "declined", "tentative"]);
+
+function htmlToPlainText(html: string): string {
+  return html
+    .replace(/<\s*br\s*\/?>/gi, "\n")
+    .replace(/<\s*\/p\s*>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function textToHtml(text: string): string {
+  return `<p>${escapeHtml(text).replace(/\r?\n/g, "<br>")}</p>`;
+}
+
+function appendHtmlBlocks(
+  html: string | undefined,
+  text: string | undefined,
+  blocks: (string | null | undefined)[],
+): string | undefined {
+  const parts = blocks.map((b) => b?.trim()).filter((b): b is string => Boolean(b));
+  if (!parts.length) return html;
+  const base = html?.trim() || (text ? textToHtml(text) : "<p></p>");
+  return sanitizeOutboundHtml(`${base}<br>${parts.join("<br>")}`);
+}
+
+function appendTextBlocks(
+  text: string | undefined,
+  html: string | undefined,
+  blocks: (string | null | undefined)[],
+): string | undefined {
+  const parts = blocks
+    .map((b) => (b ? htmlToPlainText(b) : ""))
+    .filter(Boolean);
+  if (!parts.length) return text || (html ? htmlToPlainText(html) : undefined);
+  const base = text?.trim() || (html ? htmlToPlainText(html) : "");
+  return [base, ...parts].filter(Boolean).join("\n\n");
+}
 
 function normalizeInvitePartstat(v: string | null): InvitePartstat | null {
   const s = (v ?? "").toLowerCase();
@@ -573,6 +628,15 @@ export const messageRoutes = new Hono<AppEnv>()
     }
     // 发信人显示名：地址自定义优先，回退用户昵称
     const senderName = from.senderName || user.name;
+    const sys = await db.query.systemSettings.findFirst({
+      where: eq(systemSettings.id, SYSTEM_SETTINGS_ID),
+    });
+    const signatureBlocks = [
+      from.type === "shared" ? from.sharedSignatureHtml : null,
+      sys?.orgSignatureHtml,
+    ];
+    const finalHtml = appendHtmlBlocks(body.html, body.text, signatureBlocks);
+    const finalText = appendTextBlocks(body.text, body.html, signatureBlocks);
 
     const quota = await db.query.userQuota.findFirst({
       where: eq(userQuota.userId, user.id),
@@ -619,8 +683,8 @@ export const messageRoutes = new Hono<AppEnv>()
         ...(body.cc?.length ? { cc: body.cc } : {}),
         ...(body.bcc?.length ? { bcc: body.bcc } : {}),
         subject: body.subject,
-        ...(body.text ? { text: body.text } : {}),
-        ...(body.html ? { html: body.html } : {}),
+        ...(finalText ? { text: finalText } : {}),
+        ...(finalHtml ? { html: finalHtml } : {}),
         ...(Object.keys(headers).length ? { headers } : {}),
         ...(emailAttachments.length ? { attachments: emailAttachments } : {}),
       });
@@ -647,9 +711,9 @@ export const messageRoutes = new Hono<AppEnv>()
         ccAddresses: body.cc ?? [],
         bccAddresses: body.bcc ?? [],
         subject: body.subject,
-        snippet: makeSnippet(body.text, body.html),
-        bodyText: body.text ?? null,
-        bodyHtml: body.html ?? null,
+        snippet: makeSnippet(finalText, finalHtml),
+        bodyText: finalText ?? null,
+        bodyHtml: finalHtml ?? null,
         folder: "sent",
         isRead: true,
         sentAt: new Date(),

@@ -1061,7 +1061,6 @@ export function Mailbox() {
               addresses={sendable}
               initial={composeInitial}
               personalSignatureHtml={mailSettings?.signatureHtml ?? null}
-              orgSignatureHtml={mailSettings?.orgSignatureHtml ?? null}
               onClose={() => {
                 setComposing(false);
                 refreshAll();
