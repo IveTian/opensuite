@@ -3,7 +3,7 @@ import { Suspense, lazy, useEffect, useRef, useState, type FormEvent } from "rea
 import { Select } from "../../components/Select";
 import { RecipientInput } from "../../components/RecipientInput";
 import { Alert } from "../../components/ui";
-import { PaperclipIcon, SendIcon, XIcon } from "../../components/icons";
+import { CalendarIcon, PaperclipIcon, SendIcon, XIcon } from "../../components/icons";
 import { useContactSuggestions } from "../../hooks/useContactSuggestions";
 import { api, ApiError } from "../../lib/api";
 import { extractInlineImages, htmlEscape, htmlToText } from "../../lib/email-html";
@@ -28,6 +28,7 @@ export interface ComposeInitial {
   html?: string;
   replyToMessageId?: string;
   draftId?: string;
+  scheduledAt?: string;
 }
 interface AttachmentDraft {
   filename: string;
@@ -52,12 +53,20 @@ function splitRecipients(s: string): string[] {
     .filter(Boolean);
 }
 
+function toLocalDateTimeValue(value?: string): string {
+  const d = value ? new Date(value) : new Date(Date.now() + 10 * 60 * 1000);
+  if (Number.isNaN(d.getTime())) return "";
+  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+}
+
 export function Compose({
   addresses,
   initial,
   personalSignatureHtml,
   onClose,
   onSent,
+  onScheduled,
 }: {
   addresses: Addr[];
   initial?: ComposeInitial;
@@ -65,6 +74,7 @@ export function Compose({
   personalSignatureHtml?: string | null;
   onClose: () => void;
   onSent: () => void;
+  onScheduled?: () => void;
 }) {
   const initialFromAddressId = initial?.fromAddressId ?? addresses[0]?.id ?? "";
   const initialAddress = addresses.find((a) => a.id === initialFromAddressId);
@@ -89,6 +99,7 @@ export function Compose({
   const [text, setText] = useState(initial?.text ?? "");
   const [atts, setAtts] = useState<AttachmentDraft[]>([]);
   const [draftId, setDraftId] = useState<string | undefined>(initial?.draftId);
+  const [scheduledAt, setScheduledAt] = useState(toLocalDateTimeValue(initial?.scheduledAt));
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
@@ -135,11 +146,13 @@ export function Compose({
     touched.current = true;
   }
 
-  async function send(e: FormEvent) {
-    e.preventDefault();
+  function buildPayload() {
     setError("");
     const recipients = splitRecipients(to);
-    if (!recipients.length) return setError("请填写收件人");
+    if (!recipients.length) {
+      setError("请填写收件人");
+      return null;
+    }
 
     // 抽取正文内联图片为 inline 附件，正文 <img> 改写为 cid:
     const { html: outHtml, inline } = extractInlineImages(html);
@@ -151,23 +164,51 @@ export function Compose({
     }));
     const attachments = [...fileAttachments, ...inline];
 
+    return {
+      fromAddressId,
+      to: recipients,
+      ...(cc.trim() ? { cc: splitRecipients(cc) } : {}),
+      ...(bcc.trim() ? { bcc: splitRecipients(bcc) } : {}),
+      subject,
+      ...(plain ? { text: plain } : {}),
+      ...(outHtml ? { html: outHtml } : {}),
+      ...(attachments.length ? { attachments } : {}),
+      ...(initial?.replyToMessageId ? { replyToMessageId: initial.replyToMessageId } : {}),
+      ...(draftId ? { draftId } : {}),
+    };
+  }
+
+  async function send(e: FormEvent) {
+    e.preventDefault();
+    const payload = buildPayload();
+    if (!payload) return;
     setBusy(true);
     try {
-      await api.post("/api/me/messages/send", {
-        fromAddressId,
-        to: recipients,
-        ...(cc.trim() ? { cc: splitRecipients(cc) } : {}),
-        ...(bcc.trim() ? { bcc: splitRecipients(bcc) } : {}),
-        subject,
-        ...(plain ? { text: plain } : {}),
-        ...(outHtml ? { html: outHtml } : {}),
-        ...(attachments.length ? { attachments } : {}),
-        ...(initial?.replyToMessageId ? { replyToMessageId: initial.replyToMessageId } : {}),
-        ...(draftId ? { draftId } : {}),
-      });
+      await api.post("/api/me/messages/send", payload);
       onSent();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "发送失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function schedule() {
+    const payload = buildPayload();
+    if (!payload) return;
+    const when = new Date(scheduledAt);
+    if (!scheduledAt || Number.isNaN(when.getTime())) return setError("请选择定时发送时间");
+    if (when.getTime() <= Date.now()) return setError("定时发送时间必须晚于当前时间");
+
+    setBusy(true);
+    try {
+      await api.post("/api/me/messages/schedule", {
+        ...payload,
+        scheduledAt: when.toISOString(),
+      });
+      onScheduled?.();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "定时发送失败");
     } finally {
       setBusy(false);
     }
@@ -303,10 +344,31 @@ export function Compose({
       </div>
 
       {error && <Alert>{error}</Alert>}
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <Button type="submit" variant="primary" isDisabled={busy || !fromAddressId}>
           <SendIcon className="size-4" />
           {busy ? "发送中…" : "发送"}
+        </Button>
+        <TextField className="min-w-52">
+          <Label className="sr-only">定时发送时间</Label>
+          <Input
+            type="datetime-local"
+            value={scheduledAt}
+            onChange={(e) => {
+              setScheduledAt(e.target.value);
+              touched.current = true;
+            }}
+            disabled={busy}
+          />
+        </TextField>
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={schedule}
+          isDisabled={busy || !fromAddressId}
+        >
+          <CalendarIcon className="size-4" />
+          定时发送
         </Button>
       </div>
     </form>

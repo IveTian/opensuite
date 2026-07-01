@@ -64,6 +64,9 @@ export interface MsgDetail {
   sizeBytes: number | null;
   receivedAt: string | null;
   sentAt: string | null;
+  scheduledAt: string | null;
+  sendStatus: string | null;
+  sendError: string | null;
   createdAt: string;
   attachments: Attach[];
   calendarInvites?: CalendarInvite[];
@@ -273,6 +276,7 @@ export function MessageView({
 
   if (loading) return <p className="text-sm text-muted">加载中…</p>;
   if (!m) return <p className="text-sm text-danger">{error ?? "无法加载邮件"}</p>;
+  const isScheduled = m.folder === "scheduled";
 
   async function star() {
     if (!online) return;
@@ -360,38 +364,55 @@ export function MessageView({
             <StarIcon className="size-4" />
           )}
         </Button>
-        <Button size="sm" variant="ghost" onClick={() => onReply(m)}>
-          <ReplyIcon className="size-4" />
-          回复
-        </Button>
-        <Button size="sm" variant="ghost" onClick={() => onForward(m)}>
-          <ForwardIcon className="size-4" />
-          转发
-        </Button>
-        <Button size="sm" variant="ghost" onClick={createEvent}>
-          <CalendarIcon className="size-4" />
-          创建事件
-        </Button>
-        {m.folder !== "archive" && m.folder !== "trash" && (
-          <Button size="sm" variant="ghost" onClick={archive}>
-            <ArchiveIcon className="size-4" />
-            归档
-          </Button>
+        {!isScheduled && (
+          <>
+            <Button size="sm" variant="ghost" onClick={() => onReply(m)}>
+              <ReplyIcon className="size-4" />
+              回复
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => onForward(m)}>
+              <ForwardIcon className="size-4" />
+              转发
+            </Button>
+            <Button size="sm" variant="ghost" onClick={createEvent}>
+              <CalendarIcon className="size-4" />
+              创建事件
+            </Button>
+            {m.folder !== "archive" && m.folder !== "trash" && (
+              <Button size="sm" variant="ghost" onClick={archive}>
+                <ArchiveIcon className="size-4" />
+                归档
+              </Button>
+            )}
+            <Button size="sm" variant="ghost" isIconOnly aria-label="标为未读" onClick={markUnread}>
+              <MailOpenIcon className="size-4" />
+            </Button>
+            <a
+              href={`${API}/api/me/messages/${m.id}/raw`}
+              className="self-center px-1 text-sm text-accent"
+            >
+              原文
+            </a>
+          </>
         )}
-        <Button size="sm" variant="ghost" isIconOnly aria-label="标为未读" onClick={markUnread}>
-          <MailOpenIcon className="size-4" />
-        </Button>
-        <a
-          href={`${API}/api/me/messages/${m.id}/raw`}
-          className="self-center px-1 text-sm text-accent"
-        >
-          原文
-        </a>
         <Button size="sm" variant="danger-soft" onClick={remove}>
           <TrashIcon className="size-4" />
-          {m.folder === "trash" ? "彻底删除" : "删除"}
+          {m.folder === "trash" ? "彻底删除" : isScheduled ? "取消定时" : "删除"}
         </Button>
       </div>
+
+      {isScheduled && (
+        <div className="mb-4 rounded-2xl bg-surface p-4 text-sm shadow-surface">
+          <div className="flex items-center gap-2 font-medium text-foreground">
+            <CalendarIcon className="size-4" />
+            {m.sendStatus === "failed" ? "定时发送失败" : "计划发送"}
+          </div>
+          <div className="mt-1 text-muted">
+            {m.scheduledAt ? formatDate(m.scheduledAt) : "未设置时间"}
+            {m.sendError ? ` · ${m.sendError}` : ""}
+          </div>
+        </div>
+      )}
 
       <div className="mb-4 flex items-start gap-3">
         <PersonAvatar
@@ -432,7 +453,7 @@ export function MessageView({
             {(m.toAddresses ?? []).join(", ")}
           </div>
           <div className="tabular-nums">
-            {formatDate(m.receivedAt ?? m.sentAt ?? m.createdAt)} · {formatBytes(m.sizeBytes)}
+            {formatDate(m.scheduledAt ?? m.receivedAt ?? m.sentAt ?? m.createdAt)} · {formatBytes(m.sizeBytes)}
           </div>
         </div>
       </div>
@@ -535,26 +556,30 @@ export function MessageView({
 
       {/* 移动端底部操作栏（拇指区） */}
       <div className="fixed inset-x-0 bottom-0 z-30 flex items-center justify-around border-t border-border bg-surface/95 px-2 py-2 backdrop-blur-md sm:hidden">
-        <Button
-          size="sm"
-          variant="ghost"
-          className="touch-target flex-col gap-0.5"
-          onClick={() => onReply(m)}
-          isDisabled={!online}
-        >
-          <ReplyIcon className="size-5" />
-          <span className="text-[10px]">回复</span>
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          className="touch-target flex-col gap-0.5"
-          onClick={() => onForward(m)}
-          isDisabled={!online}
-        >
-          <ForwardIcon className="size-5" />
-          <span className="text-[10px]">转发</span>
-        </Button>
+        {!isScheduled && (
+          <>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="touch-target flex-col gap-0.5"
+              onClick={() => onReply(m)}
+              isDisabled={!online}
+            >
+              <ReplyIcon className="size-5" />
+              <span className="text-[10px]">回复</span>
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="touch-target flex-col gap-0.5"
+              onClick={() => onForward(m)}
+              isDisabled={!online}
+            >
+              <ForwardIcon className="size-5" />
+              <span className="text-[10px]">转发</span>
+            </Button>
+          </>
+        )}
         <Button
           size="sm"
           variant="ghost"
@@ -571,7 +596,7 @@ export function MessageView({
           )}
           <span className="text-[10px]">星标</span>
         </Button>
-        {m.folder !== "archive" && m.folder !== "trash" && (
+        {!isScheduled && m.folder !== "archive" && m.folder !== "trash" && (
           <Button
             size="sm"
             variant="ghost"
@@ -591,7 +616,7 @@ export function MessageView({
           isDisabled={!online}
         >
           <TrashIcon className="size-5" />
-          <span className="text-[10px]">删除</span>
+          <span className="text-[10px]">{isScheduled ? "取消" : "删除"}</span>
         </Button>
       </div>
     </div>

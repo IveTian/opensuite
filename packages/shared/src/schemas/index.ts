@@ -237,7 +237,7 @@ export const attachmentInputSchema = z.object({
 });
 export type AttachmentInput = z.infer<typeof attachmentInputSchema>;
 
-export const sendMessageSchema = z
+const outboundMessageSchema = z
   .object({
     /** 发件地址（必须是当前用户名下的 active mailbox） */
     fromAddressId: z.string().uuid(),
@@ -257,7 +257,21 @@ export const sendMessageSchema = z
     message: "正文不能为空",
     path: ["text"],
   });
+export const sendMessageSchema = outboundMessageSchema;
 export type SendMessageInput = z.infer<typeof sendMessageSchema>;
+
+export const scheduleMessageSchema = outboundMessageSchema
+  .and(
+    z.object({
+      /** 计划发送时间：ISO 8601 时间点（含偏移或 Z） */
+      scheduledAt: z.string().datetime({ offset: true }),
+    }),
+  )
+  .refine((d) => new Date(d.scheduledAt).getTime() > Date.now(), {
+    message: "定时发送时间必须晚于当前时间",
+    path: ["scheduledAt"],
+  });
+export type ScheduleMessageInput = z.infer<typeof scheduleMessageSchema>;
 
 /** 草稿保存（字段宽松，允许不完整） */
 export const saveDraftSchema = z.object({

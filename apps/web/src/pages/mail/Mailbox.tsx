@@ -78,6 +78,9 @@ interface MsgItem {
   folder: string;
   receivedAt: string | null;
   sentAt: string | null;
+  scheduledAt: string | null;
+  sendStatus: string | null;
+  sendError: string | null;
   createdAt: string;
   hasAttachments?: boolean;
   hasCalendarInvite?: boolean;
@@ -87,6 +90,7 @@ interface Counts {
   inbox: number;
   sent: number;
   draft: number;
+  scheduled: number;
   trash: number;
   archive: number;
   starred: number;
@@ -106,6 +110,7 @@ const FOLDERS: {
   { key: "all", label: "全部邮件", icon: LayersIcon },
   { key: "sent", label: "已发送", icon: SendIcon },
   { key: "draft", label: "草稿", icon: FileIcon },
+  { key: "scheduled", label: "定时", icon: CalendarIcon },
   { key: "starred", label: "星标", icon: StarIcon },
   { key: "archive", label: "归档", icon: ArchiveIcon },
   { key: "trash", label: "回收站", icon: TrashIcon },
@@ -322,11 +327,11 @@ export function Mailbox() {
 
   async function openItem(item: MsgItem, idx?: number) {
     if (typeof idx === "number") setCursor(idx);
-    if (!online && folder === "draft") {
+    if (!online && item.folder === "draft") {
       alert("离线模式下无法编辑草稿，请联网后再试");
       return;
     }
-    if (folder === "draft") {
+    if (item.folder === "draft") {
       const d = await api.get<MsgDetail>(`/api/me/messages/${item.id}`);
       void cacheMessageDetail(d);
       startCompose({
@@ -858,7 +863,7 @@ export function Mailbox() {
                 const who = displayWho(m, nameOf);
                 const unread = !m.isRead && m.direction !== "outbound";
                 const checked = selected.has(m.id);
-                const when = formatDate(m.receivedAt ?? m.sentAt ?? m.createdAt);
+                const when = formatDate(m.scheduledAt ?? m.receivedAt ?? m.sentAt ?? m.createdAt);
                 const subject = m.subject || "(无主题)";
                 const rowClass =
                   "group flex items-center gap-2 rounded-xl px-2 py-1.5 transition-colors " +
@@ -916,6 +921,11 @@ export function Mailbox() {
                             >
                               {subject}
                             </span>
+                            {m.sendStatus === "failed" && (
+                              <span className="shrink-0 rounded-full bg-danger/10 px-1.5 py-0.5 text-[11px] text-danger">
+                                发送失败
+                              </span>
+                            )}
                             {m.snippet && (
                               <>
                                 <span className="shrink-0 text-muted"> — </span>
@@ -982,6 +992,11 @@ export function Mailbox() {
                             >
                               {subject}
                             </span>
+                            {m.sendStatus === "failed" && (
+                              <span className="w-fit rounded-full bg-danger/10 px-1.5 py-0.5 text-[11px] leading-tight text-danger">
+                                发送失败
+                              </span>
+                            )}
                             {(m.hasAttachments || m.hasCalendarInvite) && (
                               <span className="flex items-center gap-2 text-[11px] leading-tight text-muted">
                                 {m.hasCalendarInvite && (
@@ -1068,6 +1083,11 @@ export function Mailbox() {
               onSent={() => {
                 setComposing(false);
                 switchFolder("sent");
+                refreshAll();
+              }}
+              onScheduled={() => {
+                setComposing(false);
+                switchFolder("scheduled");
                 refreshAll();
               }}
             />
