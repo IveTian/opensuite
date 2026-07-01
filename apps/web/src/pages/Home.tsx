@@ -94,9 +94,9 @@ export function Home() {
   const apps = APPS.filter((a) => !a.adminOnly || role === "admin");
 
   return (
-    <div className="flex h-full flex-col bg-background">
+    <div className="flex h-full flex-col bg-background mobile-pad-bottom">
       {/* 顶栏：品牌 + 主题 / 账户 / 退出 */}
-      <header className="flex items-center justify-between px-5 py-4 sm:px-8">
+      <header className="safe-top flex items-center justify-between px-5 py-4 sm:px-8">
         <div className="flex items-center gap-2">
           <BrandMark />
           <span className="text-sm font-semibold text-foreground">{siteName}</span>
@@ -133,7 +133,7 @@ export function Home() {
       </header>
 
       {/* 应用网格（Launchpad 风格，居中） */}
-      <main className="flex flex-1 flex-col items-center justify-center px-6 pb-16">
+      <main className="flex flex-1 flex-col items-center justify-center px-6 pb-6">
         <h1 className="mb-10 text-center text-lg font-medium text-muted">
           你好，{session?.user.name}
         </h1>

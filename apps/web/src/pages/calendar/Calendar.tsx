@@ -47,7 +47,8 @@ export function Calendar() {
   const { data: session } = useSession();
   const image = (session?.user as { image?: string | null } | undefined)?.image ?? null;
 
-  const [view, setView] = useState<View>("month");
+  const [view, setView] = useState<View>(() => (typeof window !== "undefined" && window.matchMedia("(max-width: 639px)").matches ? "day" : "month"));
+  const [calPanelOpen, setCalPanelOpen] = useState(false);
   const [cursor, setCursor] = useState<Date>(() => startOfDay(new Date()));
   const [hidden, setHidden] = useState<Set<string>>(() => {
     try {
@@ -166,11 +167,20 @@ export function Calendar() {
   const title = view === "month" ? monthTitle(cursor) : view === "day" ? dayTitle(cursor) : monthTitle(cursor);
 
   return (
-    <div className="flex h-full flex-col bg-background">
+    <div className="flex h-full flex-col bg-background mobile-pad-bottom">
       {/* 顶部全宽 Header */}
-      <header className="flex shrink-0 items-center justify-between border-b border-border px-4 py-2.5 sm:px-6">
+      <header className="safe-top flex shrink-0 items-center justify-between border-b border-border px-4 py-2.5 sm:px-6">
         <AppSwitcher current="calendar" />
         <div className="flex items-center gap-1.5">
+          <Button
+            variant="primary"
+            size="sm"
+            className="touch-target sm:hidden"
+            onPress={() => setModal({ mode: "create" })}
+            isDisabled={!defaultCalId}
+          >
+            <PlusIcon className="size-4" />
+          </Button>
           <Button variant="ghost" isIconOnly aria-label="切换主题" onClick={toggle}>
             {theme === "dark" ? <MoonIcon className="size-4" /> : <SunIcon className="size-4" />}
           </Button>
@@ -226,7 +236,7 @@ export function Calendar() {
         <main className="flex min-h-0 min-w-0 flex-1 flex-col">
           {/* 工具条 */}
           <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2">
-            <div className="flex items-center gap-2">
+            <div className="flex min-w-0 items-center gap-1 sm:gap-2">
               <Button size="sm" variant="secondary" onPress={() => setCursor(startOfDay(new Date()))}>
                 今天
               </Button>
@@ -238,19 +248,31 @@ export function Calendar() {
                   <ChevronRightIcon className="size-4" />
                 </Button>
               </div>
-              <span className="text-sm font-semibold text-foreground">{title}</span>
+              <span className="truncate text-sm font-semibold text-foreground">{title}</span>
             </div>
-            <div className="w-28">
-              <Select
-                ariaLabel="视图"
-                value={view}
-                onChange={(v) => setView(v as View)}
-                options={[
-                  { value: "month", label: "月" },
-                  { value: "week", label: "周" },
-                  { value: "day", label: "日" },
-                ]}
-              />
+            <div className="flex shrink-0 items-center gap-1.5">
+              <Button
+                size="sm"
+                variant="ghost"
+                isIconOnly
+                className="touch-target sm:hidden"
+                aria-label="日历列表"
+                onPress={() => setCalPanelOpen(true)}
+              >
+                <SlidersIcon className="size-4" />
+              </Button>
+              <div className="w-20 sm:w-28">
+                <Select
+                  ariaLabel="视图"
+                  value={view}
+                  onChange={(v) => setView(v as View)}
+                  options={[
+                    { value: "month", label: "月" },
+                    { value: "week", label: "周" },
+                    { value: "day", label: "日" },
+                  ]}
+                />
+              </div>
             </div>
           </div>
 
@@ -323,9 +345,67 @@ export function Calendar() {
         />
       )}
 
+      {/* 移动端：日历可见性面板 */}
+      {calPanelOpen && (
+        <div className="fixed inset-0 z-50 sm:hidden">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setCalPanelOpen(false)} />
+          <div className="absolute inset-x-0 bottom-0 max-h-[70vh] overflow-y-auto rounded-t-2xl bg-surface p-4 shadow-overlay">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-foreground">我的日历</h3>
+              <Button size="sm" variant="ghost" isIconOnly aria-label="关闭" onPress={() => setCalPanelOpen(false)}>
+                <XIcon className="size-4" />
+              </Button>
+            </div>
+            <Button
+              variant="primary"
+              className="mb-4 w-full"
+              onPress={() => {
+                setCalPanelOpen(false);
+                setModal({ mode: "create" });
+              }}
+              isDisabled={!defaultCalId}
+            >
+              <PlusIcon className="size-4" />
+              新建事件
+            </Button>
+            <div className="flex flex-col gap-4">
+              <CalendarGroup
+                title="我的日历"
+                items={groups.mine}
+                hidden={hidden}
+                onToggle={toggleHidden}
+                onSettings={setSettingsCal}
+                onAdd={() => {
+                  setCalPanelOpen(false);
+                  setNewCalOpen(true);
+                }}
+              />
+              {groups.dept.length > 0 && (
+                <CalendarGroup
+                  title="部门日历"
+                  items={groups.dept}
+                  hidden={hidden}
+                  onToggle={toggleHidden}
+                  onSettings={setSettingsCal}
+                />
+              )}
+              {groups.shared.length > 0 && (
+                <CalendarGroup
+                  title="共享给我的"
+                  items={groups.shared}
+                  hidden={hidden}
+                  onToggle={toggleHidden}
+                  onSettings={setSettingsCal}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 站内提醒 */}
       {reminders.length > 0 && (
-        <div className="fixed bottom-4 right-4 z-50 flex w-72 flex-col gap-2">
+        <div className="fixed bottom-[calc(var(--mobile-nav-height)+var(--safe-bottom)+1rem)] right-4 z-50 flex w-72 max-w-[calc(100vw-2rem)] flex-col gap-2 sm:bottom-4">
           {reminders.map((r) => (
             <div
               key={r.id + r.occurrenceStart}

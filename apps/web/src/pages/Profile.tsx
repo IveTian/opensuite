@@ -222,9 +222,9 @@ export function Profile() {
   ];
 
   return (
-    <div className="flex h-full flex-col bg-background">
+    <div className="flex h-full flex-col bg-background mobile-pad-bottom">
       {/* 顶部全宽 Header（与邮箱/通讯录/后台一致） */}
-      <header className="flex shrink-0 items-center justify-between border-b border-border px-4 py-2.5 sm:px-6">
+      <header className="safe-top flex shrink-0 items-center justify-between border-b border-border px-4 py-2.5 sm:px-6">
         <AppSwitcher current="profile" label="账户" />
         <div className="flex items-center gap-1.5">
           <Button variant="ghost" isIconOnly aria-label="切换主题" onClick={toggle}>

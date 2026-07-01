@@ -57,7 +57,7 @@ export function PwaInstallPrompt() {
   }
 
   return (
-    <div className="fixed bottom-4 left-4 right-4 z-50 mx-auto flex max-w-md items-center gap-3 rounded-2xl border border-border bg-surface p-4 shadow-lg sm:left-auto sm:right-6">
+    <div className="mobile-pwa-prompt fixed inset-x-4 bottom-[calc(var(--mobile-nav-height)+var(--safe-bottom)+0.75rem)] z-50 mx-auto flex max-w-md items-center gap-3 rounded-2xl border border-border bg-surface p-4 shadow-lg sm:inset-x-auto sm:right-6 sm:bottom-4">
       <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent text-accent-foreground">
         <DownloadIcon className="size-5" />
       </div>

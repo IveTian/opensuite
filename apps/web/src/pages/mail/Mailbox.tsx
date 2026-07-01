@@ -38,7 +38,9 @@ import { useFetch } from "../../hooks/useFetch";
 import { useMailList } from "../../hooks/useMailList";
 import { useMailRealtime } from "../../hooks/useMailRealtime";
 import { useOnline } from "../../hooks/useOnline";
+import { useIsMobile } from "../../hooks/useIsMobile";
 import { cacheMessageDetail } from "../../lib/offline/mail-cache";
+import { useMobileChrome } from "../../providers/mobile-chrome";
 import { useContactNames } from "../../hooks/useContactNames";
 import {
   AdvancedSearch,
@@ -149,6 +151,8 @@ export function Mailbox() {
   const location = useLocation();
   const nameOf = useContactNames();
   const online = useOnline();
+  const isMobile = useIsMobile();
+  const { setHideBottomNav } = useMobileChrome();
   const { data: session } = useSession();
   const avatarImage = (session?.user as { image?: string | null } | undefined)?.image ?? null;
   const { data: accounts } = useFetch<MailboxAccount[]>("/api/me/accounts");
@@ -219,6 +223,12 @@ export function Mailbox() {
   const total = listData?.total ?? 0;
   const currentFolder = FOLDERS.find((f) => f.key === folder);
   const readerOpen = Boolean(selectedId || composing);
+
+  useEffect(() => {
+    setHideBottomNav(isMobile && readerOpen);
+    return () => setHideBottomNav(false);
+  }, [isMobile, readerOpen, setHideBottomNav]);
+
   // 合并签名：个人在上、组织在下
   const signature = [mailSettings?.signatureHtml, mailSettings?.orgSignatureHtml]
     .filter(Boolean)
@@ -561,9 +571,9 @@ export function Mailbox() {
       : 0;
 
   return (
-    <div className="flex h-full flex-col bg-background">
+    <div className="flex h-full flex-col bg-background mobile-pad-bottom">
       {/* 顶部全宽 Header：应用切换 + 主题 + 账户（与通讯录一致） */}
-      <header className="flex shrink-0 items-center justify-between border-b border-border px-4 py-2.5 sm:px-6">
+      <header className="safe-top flex shrink-0 items-center justify-between border-b border-border px-4 py-2.5 sm:px-6">
         <AppSwitcher current="mail" />
         <div className="flex items-center gap-1.5">
           <Button variant="ghost" isIconOnly aria-label="切换主题" onClick={toggle}>
@@ -717,22 +727,40 @@ export function Mailbox() {
           "w-full shrink-0 flex-col border-r border-border sm:flex sm:w-80 lg:w-96"
         }
       >
-        {/* 移动端：文件夹横向切换 */}
-        <div className="flex items-center gap-2 overflow-x-auto px-3 pt-3 sm:hidden">
-          {FOLDERS.map((f) => (
+        {/* 移动端：文件夹横向切换 + 账号 */}
+        <div className="space-y-2 px-3 pt-3 sm:hidden">
+          {accountList.length > 1 && (
+            <Select
+              ariaLabel="切换邮箱账号"
+              value={accountId}
+              onChange={switchAccount}
+              options={accountList.map((a) => ({
+                value: a.id,
+                label: a.kind === "shared" ? `${a.address}（公共）` : a.address,
+              }))}
+            />
+          )}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {FOLDERS.map((f) => {
+            const n = counts ? counts[f.key as keyof Counts] : 0;
+            const active = folder === f.key;
+            return (
             <button
               key={f.key}
               onClick={() => switchFolder(f.key)}
               className={
-                "whitespace-nowrap rounded-full px-3 py-1 text-xs " +
-                (folder === f.key
-                  ? "bg-accent text-accent-foreground"
+                "touch-target shrink-0 whitespace-nowrap rounded-full px-4 py-2 text-sm " +
+                (active
+                  ? "bg-accent font-medium text-accent-foreground"
                   : "bg-surface-secondary text-muted")
               }
             >
               {f.label}
+              {!!n && ` (${n})`}
             </button>
-          ))}
+            );
+          })}
+          </div>
         </div>
 
         <div className="flex items-center gap-2 px-3 pb-2 pt-3">
@@ -775,8 +803,9 @@ export function Mailbox() {
             variant="primary"
             isIconOnly
             aria-label="写邮件"
-            className="sm:hidden"
+            className="touch-target sm:hidden"
             onClick={newCompose}
+            isDisabled={!online}
           >
             <PencilIcon className="size-4" />
           </Button>
@@ -884,7 +913,7 @@ export function Mailbox() {
                         checked={checked}
                         onChange={() => toggleSelect(m.id)}
                         aria-label="选择邮件"
-                        className="mt-2.5 size-4 shrink-0"
+                        className="mt-2 size-5 shrink-0 sm:size-4"
                       />
                       <button
                         onClick={() => openItem(m, i)}
@@ -994,9 +1023,9 @@ export function Mailbox() {
         }
       >
         {readerOpen && (
-          <div className="flex items-center gap-2 border-b border-border p-2 sm:hidden">
-            <Button size="sm" variant="ghost" onClick={backToList}>
-              <ArrowLeftIcon className="size-4" />
+          <div className="safe-top flex shrink-0 items-center gap-2 border-b border-border p-2 sm:hidden">
+            <Button size="sm" variant="ghost" className="touch-target" onClick={backToList}>
+              <ArrowLeftIcon className="size-5" />
               返回
             </Button>
           </div>
