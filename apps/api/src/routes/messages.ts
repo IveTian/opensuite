@@ -1,10 +1,11 @@
 import { zValidator } from "@hono/zod-validator";
-import { and, asc, desc, eq, ilike, inArray, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, ne, notInArray, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import PostalMime from "postal-mime";
 import { attachments, emailAddresses, messages, userQuota } from "@mailflare/db";
 import type { Database } from "@mailflare/db";
 import {
+  bulkActionSchema,
   saveDraftSchema,
   sendMessageSchema,
   updateMessageSchema,
@@ -47,6 +48,7 @@ const LIST_FIELDS = {
   addressId: messages.addressId,
   direction: messages.direction,
   fromAddress: messages.fromAddress,
+  fromName: messages.fromName,
   toAddresses: messages.toAddresses,
   subject: messages.subject,
   snippet: messages.snippet,
@@ -76,6 +78,9 @@ export const messageRoutes = new Hono<AppEnv>()
     const conds = [inArray(messages.addressId, ids)];
     if (folder === "starred") {
       conds.push(eq(messages.isStarred, true), ne(messages.folder, "trash"));
+    } else if (folder === "all") {
+      // 「全部邮件」：除回收站与草稿外的所有邮件（收件箱/已发/归档）
+      conds.push(notInArray(messages.folder, ["trash", "draft"]));
     } else {
       conds.push(eq(messages.folder, folder));
     }
@@ -109,7 +114,16 @@ export const messageRoutes = new Hono<AppEnv>()
   .get("/counts", async (c) => {
     const db = c.var.db;
     const ids = await userAddressIds(db, c.var.user!.id);
-    const empty = { inbox: 0, sent: 0, draft: 0, trash: 0, starred: 0, unread: 0 };
+    const empty = {
+      inbox: 0,
+      sent: 0,
+      draft: 0,
+      trash: 0,
+      archive: 0,
+      starred: 0,
+      all: 0,
+      unread: 0,
+    };
     if (!ids.length) return c.json(empty);
 
     const rows = await db
@@ -126,6 +140,8 @@ export const messageRoutes = new Hono<AppEnv>()
     for (const r of rows) {
       if (r.folder in out) (out as Record<string, number>)[r.folder] = r.total;
       if (r.folder === "inbox") out.unread = r.unread;
+      // 「全部邮件」：除回收站与草稿外全部累加
+      if (r.folder !== "trash" && r.folder !== "draft") out.all += r.total;
     }
     out.starred = await db.$count(
       messages,
@@ -136,6 +152,47 @@ export const messageRoutes = new Hono<AppEnv>()
       ),
     );
     return c.json(out);
+  })
+
+  /** 批量操作：勾选多封后一次性归档/删除/移回收件箱/标记（仅限本人邮件） */
+  .post("/bulk", zValidator("json", bulkActionSchema), async (c) => {
+    const db = c.var.db;
+    const ids = await userAddressIds(db, c.var.user!.id);
+    if (!ids.length) return c.json({ ok: true, affected: 0 });
+    const { ids: msgIds, action } = c.req.valid("json");
+
+    const patch: Record<string, unknown> = {};
+    switch (action) {
+      case "archive":
+        patch.folder = "archive";
+        break;
+      case "trash":
+        patch.folder = "trash";
+        patch.isStarred = false;
+        break;
+      case "inbox":
+        patch.folder = "inbox";
+        break;
+      case "read":
+        patch.isRead = true;
+        break;
+      case "unread":
+        patch.isRead = false;
+        break;
+      case "star":
+        patch.isStarred = true;
+        break;
+      case "unstar":
+        patch.isStarred = false;
+        break;
+    }
+
+    const rows = await db
+      .update(messages)
+      .set(patch)
+      .where(and(inArray(messages.id, msgIds), inArray(messages.addressId, ids)))
+      .returning({ id: messages.id });
+    return c.json({ ok: true, affected: rows.length });
   })
 
   /** 导出邮箱为 .mbox（收件箱 + 已发） */
@@ -202,6 +259,8 @@ export const messageRoutes = new Hono<AppEnv>()
     if (!from || from.type !== "mailbox") {
       return c.json({ error: "发件地址无效或不属于你" }, 422);
     }
+    // 发信人显示名：地址自定义优先，回退用户昵称
+    const senderName = from.senderName || user.name;
 
     const quota = await db.query.userQuota.findFirst({
       where: eq(userQuota.userId, user.id),
@@ -243,7 +302,7 @@ export const messageRoutes = new Hono<AppEnv>()
 
     try {
       await c.env.EMAIL.send({
-        from: { email: from.address, name: user.name },
+        from: { email: from.address, name: senderName },
         to: body.to,
         ...(body.cc?.length ? { cc: body.cc } : {}),
         ...(body.bcc?.length ? { bcc: body.bcc } : {}),
@@ -271,6 +330,7 @@ export const messageRoutes = new Hono<AppEnv>()
         inReplyTo,
         references,
         fromAddress: from.address,
+        fromName: senderName,
         toAddresses: body.to,
         ccAddresses: body.cc ?? [],
         bccAddresses: body.bcc ?? [],
@@ -336,6 +396,7 @@ export const messageRoutes = new Hono<AppEnv>()
     const values = {
       addressId: from.id,
       fromAddress: from.address,
+      fromName: from.senderName || user.name,
       toAddresses: b.to ?? [],
       ccAddresses: b.cc ?? [],
       bccAddresses: b.bcc ?? [],
@@ -434,6 +495,7 @@ export const messageRoutes = new Hono<AppEnv>()
         id: messages.id,
         direction: messages.direction,
         fromAddress: messages.fromAddress,
+        fromName: messages.fromName,
         toAddresses: messages.toAddresses,
         subject: messages.subject,
         bodyText: messages.bodyText,

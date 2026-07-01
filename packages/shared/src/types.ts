@@ -17,6 +17,14 @@ export interface RegistrationConfig {
   bootstrap: boolean;
 }
 
+/** 站点品牌（公开，未登录页也可读） */
+export interface BrandingConfig {
+  /** 站点名称；为空时前端回退为默认 */
+  siteName: string;
+  /** Logo 图片地址（外链或 data: URL）；为空时用内置图标 */
+  logoUrl: string | null;
+}
+
 /** 邀请码预校验结果 */
 export interface InviteValidationResult {
   valid: boolean;

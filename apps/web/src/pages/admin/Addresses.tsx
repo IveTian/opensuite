@@ -1,6 +1,6 @@
 import { Button, Input, Label, TextField } from "@heroui/react";
 import { useState, type FormEvent } from "react";
-import { NativeSelect } from "../../components/NativeSelect";
+import { Select } from "../../components/Select";
 import { Alert, Badge, PageHeader, Panel, Table, type Column } from "../../components/ui";
 import { useFetch } from "../../hooks/useFetch";
 import { api, ApiError } from "../../lib/api";
@@ -96,42 +96,36 @@ export function Addresses() {
       <PageHeader title="邮箱地址" subtitle="为用户在某域名下分配邮箱" />
       <Panel className="mb-5">
         <form onSubmit={create} className="flex flex-wrap items-end gap-3">
-          <NativeSelect
+          <Select
             label="类型"
+            className="w-36"
             value={type}
-            onChange={(e) => setType(e.target.value as "mailbox" | "alias")}
-          >
-            <option value="mailbox">邮箱 mailbox</option>
-            <option value="alias">别名 alias</option>
-          </NativeSelect>
+            onChange={(v) => setType(v as "mailbox" | "alias")}
+            options={[
+              { value: "mailbox", label: "邮箱 mailbox" },
+              { value: "alias", label: "别名 alias" },
+            ]}
+          />
           {type === "mailbox" ? (
-            <NativeSelect
+            <Select
               label="归属用户"
+              className="w-56"
               value={userId}
-              onChange={(e) => setUserId(e.target.value)}
-              required
-            >
-              <option value="">选择用户</option>
-              {(users ?? []).map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.email}
-                </option>
-              ))}
-            </NativeSelect>
+              onChange={setUserId}
+              placeholder="选择用户"
+              isRequired
+              options={(users ?? []).map((u) => ({ value: u.id, label: u.email }))}
+            />
           ) : (
-            <NativeSelect
+            <Select
               label="投递到 mailbox"
+              className="w-56"
               value={targetAddressId}
-              onChange={(e) => setTargetAddressId(e.target.value)}
-              required
-            >
-              <option value="">选择目标 mailbox</option>
-              {mailboxTargets.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.address}
-                </option>
-              ))}
-            </NativeSelect>
+              onChange={setTargetAddressId}
+              placeholder="选择目标 mailbox"
+              isRequired
+              options={mailboxTargets.map((a) => ({ value: a.id, label: a.address }))}
+            />
           )}
           <TextField className="w-40">
             <Label>邮箱前缀</Label>
@@ -142,19 +136,15 @@ export function Addresses() {
               required
             />
           </TextField>
-          <NativeSelect
+          <Select
             label="域名"
+            className="w-44"
             value={domainId}
-            onChange={(e) => setDomainId(e.target.value)}
-            required
-          >
-            <option value="">选择域名</option>
-            {(domains ?? []).map((d) => (
-              <option key={d.id} value={d.id}>
-                @{d.name}
-              </option>
-            ))}
-          </NativeSelect>
+            onChange={setDomainId}
+            placeholder="选择域名"
+            isRequired
+            options={(domains ?? []).map((d) => ({ value: d.id, label: `@${d.name}` }))}
+          />
           <Button type="submit" variant="primary" isDisabled={busy}>
             {type === "alias" ? "创建别名" : "创建邮箱"}
           </Button>

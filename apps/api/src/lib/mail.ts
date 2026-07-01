@@ -103,6 +103,8 @@ export async function storeInboundEmail(
       inReplyTo: p.inReplyTo ?? null,
       references: p.references ?? null,
       fromAddress: opts.envelopeFrom,
+      // 显示名取 From 头（envelope-from 只是地址），如「张三」<a@b.com>
+      fromName: p.from?.name || null,
       toAddresses: flattenAddresses(p.to).length ? flattenAddresses(p.to) : [to],
       ccAddresses: flattenAddresses(p.cc),
       subject: p.subject ?? null,

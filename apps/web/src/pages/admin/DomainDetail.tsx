@@ -1,6 +1,6 @@
 import { Button, Switch } from "@heroui/react";
 import { useState } from "react";
-import { NativeSelect } from "../../components/NativeSelect";
+import { Select } from "../../components/Select";
 import { Badge, Panel } from "../../components/ui";
 import { useFetch } from "../../hooks/useFetch";
 import { api } from "../../lib/api";
@@ -148,18 +148,13 @@ export function DomainDetail({ domain, onChanged }: { domain: DomainRow; onChang
           <Switch isSelected={caEnabled} onChange={setCaEnabled} />
         </div>
         {caEnabled && (
-          <NativeSelect
+          <Select
             label="投递到邮箱"
             value={caAddr}
-            onChange={(e) => setCaAddr(e.target.value)}
-          >
-            <option value="">选择一个 mailbox</option>
-            {mailboxes.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.address}
-              </option>
-            ))}
-          </NativeSelect>
+            onChange={setCaAddr}
+            placeholder="选择一个 mailbox"
+            options={mailboxes.map((a) => ({ value: a.id, label: a.address }))}
+          />
         )}
         <Button size="sm" variant="ghost" className="mt-2" onClick={saveCatchAll} isDisabled={savingCa}>
           保存 Catch-all

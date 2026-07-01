@@ -1,6 +1,6 @@
 import { Button, Input, Label, TextField } from "@heroui/react";
 import { Suspense, lazy, useEffect, useRef, useState, type FormEvent } from "react";
-import { NativeSelect } from "../../components/NativeSelect";
+import { Select } from "../../components/Select";
 import { Alert } from "../../components/ui";
 import { PaperclipIcon, SendIcon, XIcon } from "../../components/icons";
 import { api, ApiError } from "../../lib/api";
@@ -12,6 +12,7 @@ const RichTextEditor = lazy(() => import("../../components/RichTextEditor"));
 interface Addr {
   id: string;
   address: string;
+  senderName?: string | null;
 }
 export interface ComposeInitial {
   fromAddressId?: string;
@@ -50,17 +51,23 @@ function splitRecipients(s: string): string[] {
 export function Compose({
   addresses,
   initial,
+  signatureHtml,
   onClose,
   onSent,
 }: {
   addresses: Addr[];
   initial?: ComposeInitial;
+  /** 合并后的签名（个人 + 组织）；新写/回复/转发时自动插入，编辑草稿不插入 */
+  signatureHtml?: string;
   onClose: () => void;
   onSent: () => void;
 }) {
-  const initialHtml =
+  const baseHtml =
     initial?.html ??
     (initial?.text ? `<p>${htmlEscape(initial.text).replace(/\r?\n/g, "<br>")}</p>` : "");
+  const sig = signatureHtml?.trim();
+  const initialHtml =
+    sig && !initial?.draftId ? `<p></p>${sig}${baseHtml}` : baseHtml;
 
   const [fromAddressId, setFromAddressId] = useState(
     initial?.fromAddressId ?? addresses[0]?.id ?? "",
@@ -171,20 +178,18 @@ export function Compose({
         </div>
       </div>
 
-      <NativeSelect
+      <Select
         label="发件地址"
         value={fromAddressId}
-        onChange={(e) => {
-          setFromAddressId(e.target.value);
+        onChange={(v) => {
+          setFromAddressId(v);
           touched.current = true;
         }}
-      >
-        {addresses.map((a) => (
-          <option key={a.id} value={a.id}>
-            {a.address}
-          </option>
-        ))}
-      </NativeSelect>
+        options={addresses.map((a) => ({
+          value: a.id,
+          label: a.senderName ? `${a.senderName} <${a.address}>` : a.address,
+        }))}
+      />
 
       <TextField>
         <div className="flex items-center justify-between">

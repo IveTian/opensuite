@@ -37,13 +37,21 @@ export const signInSchema = z.object({
 });
 export type SignInInput = z.infer<typeof signInSchema>;
 
-export const signUpSchema = z.object({
-  name: z.string().trim().min(1, "请填写昵称").max(64),
-  email: z.string().trim().email("邮箱格式不合法"),
-  password: z.string().min(8, "密码至少 8 位").max(128),
-  /** 仅邀请码模式需要 */
-  inviteCode: z.string().trim().min(1).max(64).optional(),
-});
+export const signUpSchema = z
+  .object({
+    name: z.string().trim().min(1, "请填写昵称").max(64),
+    /** 普通注册：用户名（邮箱本地部分），服务端按注册域名拼成 username@域名 作为登录身份与主邮箱 */
+    username: localPart.optional(),
+    /** 首位管理员引导：系统尚无域名，用外部邮箱注册登录 */
+    email: z.string().trim().email("邮箱格式不合法").optional(),
+    password: z.string().min(8, "密码至少 8 位").max(128),
+    /** 仅邀请码模式需要 */
+    inviteCode: z.string().trim().min(1).max(64).optional(),
+  })
+  .refine((d) => Boolean(d.username) || Boolean(d.email), {
+    message: "请填写用户名",
+    path: ["username"],
+  });
 export type SignUpInput = z.infer<typeof signUpSchema>;
 
 // ----------------------- 域名 -----------------------
@@ -112,6 +120,9 @@ export type ValidateInviteInput = z.infer<typeof validateInviteSchema>;
 
 // ----------------------- 系统设置 -----------------------
 
+/** 签名 HTML：撰写时插入正文，长度上限 20k */
+const signatureHtml = z.string().max(20000).nullable().optional();
+
 export const updateSettingsSchema = z.object({
   registrationMode: z.enum(REGISTRATION_MODES),
   requireAdminApproval: z.boolean(),
@@ -119,8 +130,28 @@ export const updateSettingsSchema = z.object({
   defaultStorageQuotaBytes: z.coerce.number().int().nonnegative(),
   defaultMaxAddresses: z.coerce.number().int().positive().max(1000),
   signupDefaultDomainId: z.string().uuid().nullable().optional(),
+  /** 组织整体签名 */
+  orgSignatureHtml: signatureHtml,
+  /** 品牌：站点名称 */
+  siteName: z.string().trim().max(60).nullable().optional(),
+  /** 品牌：Logo（外链或 data: URL，最长约 700k 以容纳内嵌小图） */
+  logoUrl: z.string().trim().max(700000).nullable().optional(),
 });
 export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;
+
+// ----------------------- 用户发信设置 -----------------------
+
+/** 个人签名设置 */
+export const updateMailSettingsSchema = z.object({
+  signatureHtml: signatureHtml,
+});
+export type UpdateMailSettingsInput = z.infer<typeof updateMailSettingsSchema>;
+
+/** 自定义某个邮箱地址的发信人显示名（空串视为清除） */
+export const updateSenderNameSchema = z.object({
+  senderName: z.string().trim().max(120).nullable().optional(),
+});
+export type UpdateSenderNameInput = z.infer<typeof updateSenderNameSchema>;
 
 // ----------------------- 管理员改用户 -----------------------
 
@@ -185,3 +216,21 @@ export const updateMessageSchema = z.object({
   folder: z.string().max(32).optional(),
 });
 export type UpdateMessageInput = z.infer<typeof updateMessageSchema>;
+
+/** 批量操作：勾选多封后一次性归档/删除/标记 */
+export const BULK_ACTIONS = [
+  "archive",
+  "trash",
+  "inbox",
+  "read",
+  "unread",
+  "star",
+  "unstar",
+] as const;
+export type BulkAction = (typeof BULK_ACTIONS)[number];
+
+export const bulkActionSchema = z.object({
+  ids: z.array(z.string().uuid()).min(1, "请至少选择一封").max(500),
+  action: z.enum(BULK_ACTIONS),
+});
+export type BulkActionInput = z.infer<typeof bulkActionSchema>;

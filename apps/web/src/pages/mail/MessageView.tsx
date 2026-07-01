@@ -3,8 +3,10 @@ import DOMPurify from "dompurify";
 import { useEffect, useRef, useState } from "react";
 import { Badge } from "../../components/ui";
 import {
+  ArchiveIcon,
   ForwardIcon,
   ImageIcon,
+  MailOpenIcon,
   PaperclipIcon,
   ReplyIcon,
   StarFilledIcon,
@@ -28,6 +30,7 @@ export interface MsgDetail {
   id: string;
   addressId: string;
   fromAddress: string | null;
+  fromName?: string | null;
   toAddresses: string[] | null;
   ccAddresses?: string[] | null;
   bccAddresses?: string[] | null;
@@ -231,6 +234,14 @@ export function MessageView({
     await api.del(`/api/me/messages/${m!.id}`);
     onChanged();
   }
+  async function archive() {
+    await api.patch(`/api/me/messages/${m!.id}`, { folder: "archive" });
+    onChanged();
+  }
+  async function markUnread() {
+    await api.patch(`/api/me/messages/${m!.id}`, { isRead: false });
+    onChanged();
+  }
 
   const others = (thread ?? []).filter((t) => t.id !== m.id);
 
@@ -254,6 +265,15 @@ export function MessageView({
             <ForwardIcon className="size-4" />
             转发
           </Button>
+          {m.folder !== "archive" && m.folder !== "trash" && (
+            <Button size="sm" variant="ghost" onClick={archive}>
+              <ArchiveIcon className="size-4" />
+              归档
+            </Button>
+          )}
+          <Button size="sm" variant="ghost" isIconOnly aria-label="标为未读" onClick={markUnread}>
+            <MailOpenIcon className="size-4" />
+          </Button>
           <a
             href={`${API}/api/me/messages/${m.id}/raw`}
             className="self-center px-1 text-sm text-accent"
@@ -270,7 +290,13 @@ export function MessageView({
       <div className="mb-4 space-y-0.5 text-sm text-muted">
         <div>
           <span className="text-foreground">发件人：</span>
-          {m.fromAddress}
+          {m.fromName ? (
+            <>
+              {m.fromName} <span className="text-muted">&lt;{m.fromAddress}&gt;</span>
+            </>
+          ) : (
+            m.fromAddress
+          )}
         </div>
         <div>
           <span className="text-foreground">收件人：</span>

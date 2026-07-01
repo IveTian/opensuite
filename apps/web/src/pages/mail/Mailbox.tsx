@@ -1,11 +1,23 @@
 import { Avatar, Button, Chip } from "@heroui/react";
-import { useState, type ComponentType, type MouseEvent } from "react";
-import { useNavigate } from "react-router-dom";
 import {
+  useEffect,
+  useRef,
+  useState,
+  type ComponentType,
+  type MouseEvent,
+} from "react";
+import { useNavigate } from "react-router-dom";
+import type { BulkAction } from "@mailflare/shared";
+import {
+  ArchiveIcon,
+  ArrowLeftIcon,
   DownloadIcon,
   FileIcon,
   InboxIcon,
+  KeyboardIcon,
+  LayersIcon,
   MailIcon,
+  MailOpenIcon,
   MoonIcon,
   PencilIcon,
   RefreshIcon,
@@ -16,12 +28,15 @@ import {
   SunIcon,
   TrashIcon,
   UserIcon,
+  XIcon,
 } from "../../components/icons";
 import { useFetch } from "../../hooks/useFetch";
 import { api } from "../../lib/api";
 import { buildForwardHtml, buildReplyHtml } from "../../lib/email-html";
 import { formatBytes, formatDate } from "../../lib/format";
 import { useTheme } from "../../providers/theme";
+import { useBranding } from "../../providers/branding";
+import { BrandMark } from "../../components/BrandMark";
 import { Compose, type ComposeInitial } from "./Compose";
 import { MessageView, type MsgDetail } from "./MessageView";
 
@@ -29,10 +44,17 @@ interface Addr {
   id: string;
   address: string;
   type: string;
+  senderName: string | null;
+}
+interface MailSettings {
+  signatureHtml: string | null;
+  orgSignatureHtml: string | null;
 }
 interface MsgItem {
   id: string;
+  direction: string;
   fromAddress: string | null;
+  fromName: string | null;
   toAddresses: string[] | null;
   subject: string | null;
   snippet: string | null;
@@ -48,7 +70,9 @@ interface Counts {
   sent: number;
   draft: number;
   trash: number;
+  archive: number;
   starred: number;
+  all: number;
   unread: number;
 }
 interface Quota {
@@ -57,26 +81,57 @@ interface Quota {
 }
 
 const API = import.meta.env.VITE_API_ORIGIN;
-const FOLDERS: { key: string; label: string; icon: ComponentType<{ className?: string }> }[] = [
+const FOLDERS: {
+  key: string;
+  label: string;
+  icon: ComponentType<{ className?: string }>;
+}[] = [
   { key: "inbox", label: "收件箱", icon: InboxIcon },
+  { key: "all", label: "全部邮件", icon: LayersIcon },
   { key: "sent", label: "已发送", icon: SendIcon },
   { key: "draft", label: "草稿", icon: FileIcon },
   { key: "starred", label: "星标", icon: StarIcon },
+  { key: "archive", label: "归档", icon: ArchiveIcon },
   { key: "trash", label: "回收站", icon: TrashIcon },
 ];
 const LIMIT = 50;
 
+const SHORTCUTS: { keys: string; desc: string }[] = [
+  { keys: "c", desc: "写邮件" },
+  { keys: "/", desc: "搜索" },
+  { keys: "j / k", desc: "下一封 / 上一封" },
+  { keys: "o / Enter", desc: "打开邮件" },
+  { keys: "u / Esc", desc: "返回列表" },
+  { keys: "x", desc: "勾选当前邮件" },
+  { keys: "e", desc: "归档" },
+  { keys: "#", desc: "删除（移入回收站）" },
+  { keys: "s", desc: "星标 / 取消星标" },
+  { keys: "Shift + I", desc: "标为已读" },
+  { keys: "Shift + U", desc: "标为未读" },
+  { keys: "?", desc: "显示 / 隐藏快捷键" },
+];
+
 function initials(value: string | null): string {
   if (!value) return "?";
-  const local = value.split("@")[0] ?? value;
+  const local = value.includes("@") ? (value.split("@")[0] ?? value) : value;
   const parts = local.replace(/[._-]+/g, " ").trim().split(/\s+/);
   return ((parts[0]?.[0] ?? "?") + (parts[1]?.[0] ?? "")).toUpperCase();
 }
 
+/** 列表项主体展示名：出站看收件人，入站看发件人显示名 */
+function displayWho(m: MsgItem): string {
+  if (m.direction === "outbound") {
+    return (m.toAddresses ?? []).join(", ") || "(无收件人)";
+  }
+  return m.fromName || m.fromAddress || "(未知发件人)";
+}
+
 export function Mailbox() {
   const { theme, toggle } = useTheme();
+  const brand = useBranding();
   const navigate = useNavigate();
   const { data: addresses } = useFetch<Addr[]>("/api/me/addresses");
+  const { data: mailSettings } = useFetch<MailSettings>("/api/me/mail-settings");
   const { data: quota } = useFetch<Quota | null>("/api/me/quota");
   const { data: counts, refetch: refetchCounts } = useFetch<Counts>(
     "/api/me/messages/counts",
@@ -99,6 +154,23 @@ export function Mailbox() {
   const [composeInitial, setComposeInitial] = useState<ComposeInitial | undefined>();
   const [composeKey, setComposeKey] = useState(0);
   const [simBusy, setSimBusy] = useState(false);
+  // 批量勾选 + 键盘游标 + 快捷键帮助
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [cursor, setCursor] = useState(0);
+  const [showHelp, setShowHelp] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  const mailboxes = (addresses ?? []).filter((a) => a.type === "mailbox");
+  const items = listData?.items ?? [];
+  const total = listData?.total ?? 0;
+  const currentFolder = FOLDERS.find((f) => f.key === folder);
+  const readerOpen = Boolean(selectedId || composing);
+  // 合并签名：个人在上、组织在下
+  const signature = [mailSettings?.signatureHtml, mailSettings?.orgSignatureHtml]
+    .filter(Boolean)
+    .join("<br>");
+  const allSelected = items.length > 0 && items.every((m) => selected.has(m.id));
 
   /** 打开撰写面板（每次都换 key，确保编辑器以新内容重新挂载） */
   function startCompose(init?: ComposeInitial) {
@@ -107,11 +179,6 @@ export function Mailbox() {
     setComposing(true);
     setSelectedId(null);
   }
-
-  const mailboxes = (addresses ?? []).filter((a) => a.type === "mailbox");
-  const items = listData?.items ?? [];
-  const total = listData?.total ?? 0;
-  const currentFolder = FOLDERS.find((f) => f.key === folder);
 
   function refreshAll() {
     void refetchList();
@@ -122,14 +189,22 @@ export function Mailbox() {
     setPage(0);
     setSelectedId(null);
     setComposing(false);
+    setSelected(new Set());
+    setCursor(0);
   }
   function applySearch() {
     setQ(qInput.trim());
     setPage(0);
     setSelectedId(null);
+    setCursor(0);
+  }
+  function backToList() {
+    setComposing(false);
+    setSelectedId(null);
   }
 
-  async function openItem(item: MsgItem) {
+  async function openItem(item: MsgItem, idx?: number) {
+    if (typeof idx === "number") setCursor(idx);
     if (folder === "draft") {
       const d = await api.get<MsgDetail>(`/api/me/messages/${item.id}`);
       startCompose({
@@ -155,6 +230,40 @@ export function Mailbox() {
   async function toggleStar(item: MsgItem, e: MouseEvent) {
     e.stopPropagation();
     await api.patch(`/api/me/messages/${item.id}`, { isStarred: !item.isStarred });
+    refreshAll();
+  }
+
+  function toggleSelect(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  function toggleSelectAll() {
+    setSelected(allSelected ? new Set() : new Set(items.map((m) => m.id)));
+  }
+
+  /** 批量动作：优先勾选集，其次当前打开邮件，最后键盘游标项 */
+  async function bulkAction(action: BulkAction) {
+    const ids = selected.size
+      ? [...selected]
+      : selectedId
+        ? [selectedId]
+        : items[cursor]
+          ? [items[cursor]!.id]
+          : [];
+    if (!ids.length) return;
+    await api.post("/api/me/messages/bulk", { ids, action });
+    setSelected(new Set());
+    if (
+      selectedId &&
+      ids.includes(selectedId) &&
+      (action === "archive" || action === "trash")
+    ) {
+      setSelectedId(null);
+    }
     refreshAll();
   }
 
@@ -194,7 +303,7 @@ export function Mailbox() {
 
   async function simulate() {
     const addr = mailboxes[0];
-    if (!addr) return alert("请先让管理员为你分配一个邮箱地址");
+    if (!addr) return alert("你还没有邮箱地址");
     setSimBusy(true);
     const raw = [
       "From: 测试人 <tester@example.net>",
@@ -214,6 +323,108 @@ export function Mailbox() {
     }
   }
 
+  // 游标越界纠正 + 滚动到可视
+  useEffect(() => {
+    if (cursor > items.length - 1) setCursor(items.length ? items.length - 1 : 0);
+  }, [items.length, cursor]);
+  useEffect(() => {
+    const el = listRef.current?.querySelector(`[data-idx="${cursor}"]`);
+    (el as HTMLElement | null)?.scrollIntoView({ block: "nearest" });
+  }, [cursor]);
+
+  // 键盘快捷键（Gmail 风格）
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const t = e.target as HTMLElement | null;
+      if (
+        t &&
+        (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)
+      )
+        return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      // 撰写中不拦截（交给编辑器/输入框），仅保留帮助层的关闭
+      if (composing && !showHelp) return;
+
+      if (showHelp) {
+        if (e.key === "Escape" || e.key === "?") setShowHelp(false);
+        return;
+      }
+      if (e.key === "?") {
+        e.preventDefault();
+        setShowHelp(true);
+        return;
+      }
+      if (e.key === "/") {
+        e.preventDefault();
+        searchRef.current?.focus();
+        return;
+      }
+      if (e.key === "c") {
+        e.preventDefault();
+        newCompose();
+        return;
+      }
+      if (e.key === "Escape" || e.key === "u") {
+        backToList();
+        return;
+      }
+      switch (e.key) {
+        case "j":
+          e.preventDefault();
+          setCursor((i) => Math.min(i + 1, items.length - 1));
+          break;
+        case "k":
+          e.preventDefault();
+          setCursor((i) => Math.max(i - 1, 0));
+          break;
+        case "o":
+        case "Enter":
+          if (items[cursor]) {
+            e.preventDefault();
+            void openItem(items[cursor]!, cursor);
+          }
+          break;
+        case "x":
+          if (items[cursor]) {
+            e.preventDefault();
+            toggleSelect(items[cursor]!.id);
+          }
+          break;
+        case "e":
+          e.preventDefault();
+          void bulkAction("archive");
+          break;
+        case "#":
+          e.preventDefault();
+          void bulkAction("trash");
+          break;
+        case "s": {
+          e.preventDefault();
+          const cur = items.find(
+            (m) => m.id === (selectedId ?? items[cursor]?.id),
+          );
+          void bulkAction(cur?.isStarred ? "unstar" : "star");
+          break;
+        }
+        case "I":
+          if (e.shiftKey) {
+            e.preventDefault();
+            void bulkAction("read");
+          }
+          break;
+        case "U":
+          if (e.shiftKey) {
+            e.preventDefault();
+            void bulkAction("unread");
+          }
+          break;
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, cursor, selected, selectedId, showHelp, folder, mailboxes, composing]);
+
   const usedPct =
     quota && quota.storageQuotaBytes
       ? Math.min(100, Math.round((quota.usedBytes / quota.storageQuotaBytes) * 100))
@@ -224,10 +435,8 @@ export function Mailbox() {
       {/* 侧栏 */}
       <aside className="hidden w-60 shrink-0 flex-col border-r border-border p-3 sm:flex">
         <div className="flex items-center gap-2 px-2 py-2">
-          <div className="flex size-7 items-center justify-center rounded-lg bg-accent text-accent-foreground">
-            <MailIcon className="size-4" />
-          </div>
-          <span className="text-base font-semibold text-foreground">MailFlare</span>
+          <BrandMark boxClassName="size-7 rounded-lg" iconClassName="size-4" />
+          <span className="text-base font-semibold text-foreground">{brand.siteName}</span>
         </div>
 
         <div className="px-1 py-2">
@@ -303,6 +512,15 @@ export function Mailbox() {
               size="sm"
               variant="ghost"
               isIconOnly
+              aria-label="快捷键"
+              onClick={() => setShowHelp(true)}
+            >
+              <KeyboardIcon className="size-4" />
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              isIconOnly
               aria-label="切换主题"
               onClick={toggle}
             >
@@ -330,26 +548,101 @@ export function Mailbox() {
       </aside>
 
       {/* 列表 */}
-      <div className="flex w-full shrink-0 flex-col border-r border-border sm:w-80 lg:w-96">
+      <div
+        className={
+          (readerOpen ? "hidden " : "flex ") +
+          "w-full shrink-0 flex-col border-r border-border sm:flex sm:w-80 lg:w-96"
+        }
+      >
+        {/* 移动端：文件夹横向切换 */}
+        <div className="flex items-center gap-2 overflow-x-auto px-3 pt-3 sm:hidden">
+          {FOLDERS.map((f) => (
+            <button
+              key={f.key}
+              onClick={() => switchFolder(f.key)}
+              className={
+                "whitespace-nowrap rounded-full px-3 py-1 text-xs " +
+                (folder === f.key
+                  ? "bg-accent text-accent-foreground"
+                  : "bg-surface-secondary text-muted")
+              }
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
         <div className="flex items-center gap-2 px-3 pb-2 pt-3">
           <div className="relative flex-1">
             <SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
             <input
+              ref={searchRef}
               value={qInput}
               onChange={(e) => setQInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && applySearch()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") applySearch();
+                if (e.key === "Escape") e.currentTarget.blur();
+              }}
               placeholder="搜索主题 / 发件人…"
               aria-label="搜索邮件"
               className="w-full rounded-xl border border-border bg-surface-secondary py-2 pl-9 pr-3 text-sm text-foreground placeholder:text-muted focus:border-field-border-focus focus:outline-none focus:ring-2 focus:ring-focus/40"
             />
           </div>
+          <Button
+            size="sm"
+            variant="primary"
+            isIconOnly
+            aria-label="写邮件"
+            className="sm:hidden"
+            onClick={newCompose}
+          >
+            <PencilIcon className="size-4" />
+          </Button>
         </div>
 
-        <div className="px-3 pb-2">
-          <h2 className="text-sm font-semibold text-foreground">{currentFolder?.label}</h2>
-        </div>
+        {/* 工具条：文件夹标题 / 批量操作 */}
+        {selected.size > 0 ? (
+          <div className="flex items-center gap-0.5 px-3 pb-2">
+            <span className="mr-1 text-xs text-muted tabular-nums">已选 {selected.size}</span>
+            <Button size="sm" variant="ghost" isIconOnly aria-label="归档" onClick={() => bulkAction("archive")}>
+              <ArchiveIcon className="size-4" />
+            </Button>
+            <Button size="sm" variant="ghost" isIconOnly aria-label="删除" onClick={() => bulkAction("trash")}>
+              <TrashIcon className="size-4" />
+            </Button>
+            <Button size="sm" variant="ghost" isIconOnly aria-label="标已读" onClick={() => bulkAction("read")}>
+              <MailOpenIcon className="size-4" />
+            </Button>
+            <Button size="sm" variant="ghost" isIconOnly aria-label="标未读" onClick={() => bulkAction("unread")}>
+              <MailIcon className="size-4" />
+            </Button>
+            <Button size="sm" variant="ghost" isIconOnly aria-label="星标" onClick={() => bulkAction("star")}>
+              <StarIcon className="size-4" />
+            </Button>
+            <div className="flex-1" />
+            <Button size="sm" variant="ghost" isIconOnly aria-label="取消选择" onClick={() => setSelected(new Set())}>
+              <XIcon className="size-4" />
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between px-3 pb-2">
+            <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-foreground">
+              <input
+                type="checkbox"
+                checked={allSelected}
+                onChange={toggleSelectAll}
+                aria-label="全选"
+                className="size-4"
+              />
+              {currentFolder?.label}
+            </label>
+            <Button size="sm" variant="ghost" isIconOnly aria-label="刷新" onClick={refreshAll}>
+              <RefreshIcon className="size-4" />
+            </Button>
+          </div>
+        )}
 
-        <div className="min-h-0 flex-1 overflow-auto px-2 pb-2">
+        <div ref={listRef} className="min-h-0 flex-1 overflow-auto px-2 pb-2">
           {loading ? (
             <div className="space-y-2 p-1">
               {Array.from({ length: 6 }).map((_, i) => (
@@ -363,64 +656,76 @@ export function Mailbox() {
             </div>
           ) : (
             <ul className="flex flex-col gap-0.5">
-              {items.map((m) => {
+              {items.map((m, i) => {
                 const active = selectedId === m.id;
-                const who =
-                  folder === "inbox" || folder === "trash"
-                    ? m.fromAddress
-                    : (m.toAddresses ?? []).join(", ") || "(无收件人)";
-                const unread = !m.isRead && folder === "inbox";
+                const isCursor = i === cursor;
+                const who = displayWho(m);
+                const unread = !m.isRead && m.direction !== "outbound";
+                const checked = selected.has(m.id);
                 return (
-                  <li key={m.id}>
-                    <button
-                      onClick={() => openItem(m)}
+                  <li key={m.id} data-idx={i}>
+                    <div
                       className={
-                        "relative flex w-full items-start gap-3 rounded-2xl p-3 text-left " +
+                        "group flex items-start gap-2 rounded-2xl p-2.5 transition-colors " +
                         (active
                           ? "bg-surface shadow-surface"
-                          : "hover:bg-surface-secondary")
+                          : "hover:bg-surface-secondary") +
+                        (isCursor && !active ? " ring-1 ring-accent/50" : "") +
+                        (checked ? " bg-accent/10" : "")
                       }
                     >
-                      <Avatar className="size-9 shrink-0">
-                        <Avatar.Fallback>{initials(who)}</Avatar.Fallback>
-                      </Avatar>
-                      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                        <span className="flex items-center justify-between gap-2">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleSelect(m.id)}
+                        aria-label="选择邮件"
+                        className="mt-2.5 size-4 shrink-0"
+                      />
+                      <button
+                        onClick={() => openItem(m, i)}
+                        className="flex min-w-0 flex-1 items-start gap-3 text-left"
+                      >
+                        <Avatar className="size-9 shrink-0">
+                          <Avatar.Fallback>{initials(who)}</Avatar.Fallback>
+                        </Avatar>
+                        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                          <span className="flex items-center justify-between gap-2">
+                            <span
+                              className={
+                                "truncate text-sm leading-tight text-foreground " +
+                                (unread ? "font-semibold" : "")
+                              }
+                            >
+                              {who}
+                            </span>
+                            <span className="flex shrink-0 items-center gap-1.5">
+                              <span className="whitespace-nowrap text-xs text-muted">
+                                {formatDate(m.receivedAt ?? m.sentAt ?? m.createdAt)}
+                              </span>
+                              {unread && <span className="size-1.5 rounded-full bg-accent" />}
+                            </span>
+                          </span>
                           <span
                             className={
-                              "truncate text-sm leading-tight " +
-                              (unread ? "font-semibold text-foreground" : "text-foreground")
+                              "truncate text-xs leading-tight " +
+                              (unread ? "font-medium text-foreground" : "text-muted")
                             }
                           >
-                            {who}
+                            {m.subject || "(无主题)"}
                           </span>
-                          <span className="flex shrink-0 items-center gap-1.5">
-                            <span className="whitespace-nowrap text-xs text-muted">
-                              {formatDate(m.receivedAt ?? m.sentAt ?? m.createdAt)}
-                            </span>
-                            {unread && <span className="size-1.5 rounded-full bg-accent" />}
+                          <span className="truncate text-xs leading-tight text-muted">
+                            {m.snippet}
                           </span>
                         </span>
-                        <span
-                          className={
-                            "truncate text-xs leading-tight " +
-                            (unread ? "font-medium text-foreground" : "text-muted")
-                          }
-                        >
-                          {m.subject || "(无主题)"}
-                        </span>
-                        <span className="truncate pr-6 text-xs leading-tight text-muted">
-                          {m.snippet}
-                        </span>
-                      </span>
-                      <span
-                        role="button"
-                        tabIndex={-1}
+                      </button>
+                      <button
                         aria-label={m.isStarred ? "取消星标" : "星标"}
                         onClick={(e) => toggleStar(m, e)}
                         className={
-                          "absolute bottom-3 right-3 " +
-                          (m.isStarred ? "text-warning" : "text-muted opacity-50 hover:opacity-100")
+                          "mt-1 shrink-0 " +
+                          (m.isStarred
+                            ? "text-warning"
+                            : "text-muted opacity-40 hover:opacity-100")
                         }
                       >
                         {m.isStarred ? (
@@ -428,8 +733,8 @@ export function Mailbox() {
                         ) : (
                           <StarIcon className="size-4" />
                         )}
-                      </span>
-                    </button>
+                      </button>
+                    </div>
                   </li>
                 );
               })}
@@ -459,42 +764,91 @@ export function Mailbox() {
       </div>
 
       {/* 阅读 / 写信 */}
-      <div className="hidden min-w-0 flex-1 overflow-auto p-6 sm:block">
-        {composing ? (
-          <Compose
-            key={composeKey}
-            addresses={mailboxes}
-            initial={composeInitial}
-            onClose={() => {
-              setComposing(false);
-              refreshAll();
-            }}
-            onSent={() => {
-              setComposing(false);
-              switchFolder("sent");
-              refreshAll();
-            }}
-          />
-        ) : selectedId ? (
-          <MessageView
-            key={selectedId}
-            messageId={selectedId}
-            onReply={reply}
-            onForward={forward}
-            onChanged={() => {
-              setSelectedId(null);
-              refreshAll();
-            }}
-          />
-        ) : (
-          <div className="flex h-full flex-col items-center justify-center gap-3 text-muted">
-            <div className="flex size-14 items-center justify-center rounded-2xl bg-surface-secondary">
-              <MailIcon className="size-7 opacity-60" />
-            </div>
-            <p className="text-sm">选择一封邮件查看，或点击「写邮件」</p>
+      <div
+        className={
+          (readerOpen ? "flex " : "hidden ") + "min-w-0 flex-1 flex-col sm:flex"
+        }
+      >
+        {readerOpen && (
+          <div className="flex items-center gap-2 border-b border-border p-2 sm:hidden">
+            <Button size="sm" variant="ghost" onClick={backToList}>
+              <ArrowLeftIcon className="size-4" />
+              返回
+            </Button>
           </div>
         )}
+        <div className="min-h-0 flex-1 overflow-auto p-4 sm:p-6">
+          {composing ? (
+            <Compose
+              key={composeKey}
+              addresses={mailboxes}
+              initial={composeInitial}
+              signatureHtml={signature}
+              onClose={() => {
+                setComposing(false);
+                refreshAll();
+              }}
+              onSent={() => {
+                setComposing(false);
+                switchFolder("sent");
+                refreshAll();
+              }}
+            />
+          ) : selectedId ? (
+            <MessageView
+              key={selectedId}
+              messageId={selectedId}
+              onReply={reply}
+              onForward={forward}
+              onChanged={() => {
+                setSelectedId(null);
+                refreshAll();
+              }}
+            />
+          ) : (
+            <div className="flex h-full flex-col items-center justify-center gap-3 text-muted">
+              <div className="flex size-14 items-center justify-center rounded-2xl bg-surface-secondary">
+                <MailIcon className="size-7 opacity-60" />
+              </div>
+              <p className="text-sm">选择一封邮件查看，或点击「写邮件」</p>
+              <p className="text-xs text-muted">按 ? 查看快捷键</p>
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* 快捷键帮助 */}
+      {showHelp && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setShowHelp(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-surface p-5 shadow-surface"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <KeyboardIcon className="size-4" />
+                键盘快捷键
+              </h3>
+              <Button size="sm" variant="ghost" isIconOnly aria-label="关闭" onClick={() => setShowHelp(false)}>
+                <XIcon className="size-4" />
+              </Button>
+            </div>
+            <ul className="flex flex-col gap-1.5">
+              {SHORTCUTS.map((s) => (
+                <li key={s.keys} className="flex items-center justify-between text-sm">
+                  <span className="text-muted">{s.desc}</span>
+                  <kbd className="rounded-md border border-border bg-surface-secondary px-2 py-0.5 text-xs font-medium tabular-nums text-foreground">
+                    {s.keys}
+                  </kbd>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

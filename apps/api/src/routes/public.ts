@@ -3,6 +3,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import {
   domains,
+  emailAddresses,
   inviteCodeRedemptions,
   inviteCodes,
   plans,
@@ -14,6 +15,7 @@ import {
   SYSTEM_SETTINGS_ID,
   signUpSchema,
   validateInviteSchema,
+  type BrandingConfig,
   type InviteValidationResult,
   type RegistrationConfig,
   type RegistrationMode,
@@ -33,6 +35,18 @@ async function rollbackInvite(db: Database, inviteId: string) {
 }
 
 export const publicRoutes = new Hono<AppEnv>()
+  /** 站点品牌（公开，未登录页也可读） */
+  .get("/branding", async (c) => {
+    const settings = await c.var.db.query.systemSettings.findFirst({
+      where: eq(systemSettings.id, SYSTEM_SETTINGS_ID),
+    });
+    const body: BrandingConfig = {
+      siteName: settings?.siteName?.trim() || "MailFlare",
+      logoUrl: settings?.logoUrl || null,
+    };
+    return c.json(body);
+  })
+
   /** 注册页读取的公开配置 */
   .get("/registration-config", async (c) => {
     const db = c.var.db;
@@ -85,7 +99,7 @@ export const publicRoutes = new Hono<AppEnv>()
    */
   .post("/sign-up", zValidator("json", signUpSchema), async (c) => {
     const db = c.var.db;
-    const { name, email, password, inviteCode } = c.req.valid("json");
+    const { name, username, email, password, inviteCode } = c.req.valid("json");
 
     const settings = await db.query.systemSettings.findFirst({
       where: eq(systemSettings.id, SYSTEM_SETTINGS_ID),
@@ -98,6 +112,7 @@ export const publicRoutes = new Hono<AppEnv>()
     // 邀请码占用（非引导且仅邀请码模式）
     let occupiedInviteId: string | null = null;
     let occupiedPlanId: string | null = null;
+    let occupiedDomainId: string | null = null;
     if (!isBootstrap) {
       if (mode === "closed") return c.json({ error: "注册已关闭" }, 403);
       if (mode === "invite_only") {
@@ -119,6 +134,7 @@ export const publicRoutes = new Hono<AppEnv>()
         if (!row) return c.json({ error: "邀请码无效或已用尽" }, 422);
         occupiedInviteId = row.id;
         occupiedPlanId = row.defaultPlanId;
+        occupiedDomainId = row.allowedDomainId;
         if (row.usedCount >= row.maxUses) {
           await db
             .update(inviteCodes)
@@ -128,11 +144,52 @@ export const publicRoutes = new Hono<AppEnv>()
       }
     }
 
+    // 解析登录身份与主邮箱：
+    // - bootstrap（系统尚无域名）：用外部邮箱登录，暂不分配 mailbox；
+    // - 普通用户：用户名 + 注册域名拼成 username@域名，既作登录身份又即时开通主邮箱。
+    let loginEmail: string;
+    let mailbox: { domainId: string; localPart: string; address: string } | null = null;
+    if (isBootstrap) {
+      if (!email) {
+        if (occupiedInviteId) await rollbackInvite(db, occupiedInviteId);
+        return c.json({ error: "请填写邮箱" }, 422);
+      }
+      loginEmail = email;
+    } else {
+      if (!username) {
+        if (occupiedInviteId) await rollbackInvite(db, occupiedInviteId);
+        return c.json({ error: "请填写用户名" }, 422);
+      }
+      // 域名优先取邀请码限定域名，否则取系统默认注册域名
+      const signupDomainId = occupiedDomainId ?? settings?.signupDefaultDomainId ?? null;
+      if (!signupDomainId) {
+        if (occupiedInviteId) await rollbackInvite(db, occupiedInviteId);
+        return c.json({ error: "系统尚未配置注册域名，请联系管理员" }, 422);
+      }
+      const domain = await db.query.domains.findFirst({
+        where: eq(domains.id, signupDomainId),
+      });
+      if (!domain) {
+        if (occupiedInviteId) await rollbackInvite(db, occupiedInviteId);
+        return c.json({ error: "注册域名不存在，请联系管理员" }, 422);
+      }
+      const address = `${username}@${domain.name}`;
+      const dup = await db.query.emailAddresses.findFirst({
+        where: eq(emailAddresses.address, address),
+      });
+      if (dup) {
+        if (occupiedInviteId) await rollbackInvite(db, occupiedInviteId);
+        return c.json({ error: "该邮箱地址已被占用，请换一个用户名" }, 409);
+      }
+      loginEmail = address;
+      mailbox = { domainId: domain.id, localPart: username, address };
+    }
+
     // 调 Better Auth 服务端注册（autoSignIn=false，仅创建用户）
     let createdUserId: string;
     try {
       const res = await c.var.auth.api.signUpEmail({
-        body: { name, email, password },
+        body: { name, email: loginEmail, password },
         headers: c.req.raw.headers,
       });
       createdUserId = res.user.id;
@@ -178,6 +235,22 @@ export const publicRoutes = new Hono<AppEnv>()
       }
     }
 
+    // 普通用户：注册即开通主邮箱（username@域名），无需管理员事后分配
+    if (mailbox) {
+      await db
+        .insert(emailAddresses)
+        .values({
+          domainId: mailbox.domainId,
+          userId: createdUserId,
+          localPart: mailbox.localPart,
+          address: mailbox.address,
+          type: "mailbox",
+          isPrimary: true,
+          status: "active",
+        })
+        .onConflictDoNothing({ target: emailAddresses.address });
+    }
+
     // 待审核：不下发会话
     if (willBePending) {
       return c.json({ status: "pending", message: "注册成功，等待管理员审核" }, 201);
@@ -185,7 +258,7 @@ export const publicRoutes = new Hono<AppEnv>()
 
     // 正常：显式登录并返回带会话 cookie 的响应
     return c.var.auth.api.signInEmail({
-      body: { email, password },
+      body: { email: loginEmail, password },
       headers: c.req.raw.headers,
       asResponse: true,
     });

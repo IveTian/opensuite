@@ -15,6 +15,27 @@
       "when": 1782750469283,
       "tag": "0001_elite_bill_hollister",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1782877778599,
+      "tag": "0002_last_charles_xavier",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1782879202833,
+      "tag": "0003_free_praxagora",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1782880899413,
+      "tag": "0004_black_thanos",
+      "breakpoints": true
     }
   ]
 }

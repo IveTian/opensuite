@@ -3,13 +3,15 @@ import { useState, type ComponentType } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { signOut, useSession } from "../lib/auth-client";
 import { useTheme } from "../providers/theme";
+import { useBranding } from "../providers/branding";
+import { BrandMark } from "./BrandMark";
 import {
   AtSignIcon,
   CreditCardIcon,
   DashboardIcon,
   GlobeIcon,
+  InboxIcon,
   LogOutIcon,
-  MailIcon,
   MenuIcon,
   MoonIcon,
   ScrollIcon,
@@ -46,6 +48,7 @@ function initials(value?: string | null): string {
 export function AdminLayout() {
   const { theme, toggle } = useTheme();
   const { data: session } = useSession();
+  const brand = useBranding();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -58,10 +61,8 @@ export function AdminLayout() {
     <div className="flex h-full w-60 flex-col bg-background p-3">
       <div className="flex items-center justify-between px-2 py-2">
         <div className="flex items-center gap-2">
-          <div className="flex size-7 items-center justify-center rounded-lg bg-accent text-accent-foreground">
-            <MailIcon className="size-4" />
-          </div>
-          <span className="text-base font-semibold text-foreground">MailFlare</span>
+          <BrandMark boxClassName="size-7 rounded-lg" iconClassName="size-4" />
+          <span className="text-base font-semibold text-foreground">{brand.siteName}</span>
         </div>
         <Button
           size="sm"
@@ -98,6 +99,17 @@ export function AdminLayout() {
           );
         })}
       </nav>
+
+      <button
+        onClick={() => {
+          setMobileOpen(false);
+          navigate("/mail");
+        }}
+        className="mt-1 flex h-9 items-center gap-3 rounded-xl px-3 text-sm text-muted hover:bg-surface-secondary hover:text-foreground"
+      >
+        <InboxIcon className="size-4 shrink-0" />
+        返回邮箱
+      </button>
 
       <div className="mt-3 flex items-center gap-2 rounded-xl bg-surface-secondary p-2">
         <Avatar className="size-8 shrink-0">
@@ -150,10 +162,8 @@ export function AdminLayout() {
             <MenuIcon className="size-5" />
           </Button>
           <div className="flex items-center gap-2">
-            <div className="flex size-6 items-center justify-center rounded-md bg-accent text-accent-foreground">
-              <MailIcon className="size-3.5" />
-            </div>
-            <span className="text-sm font-semibold text-foreground">MailFlare</span>
+            <BrandMark boxClassName="size-6 rounded-md" iconClassName="size-3.5" />
+            <span className="text-sm font-semibold text-foreground">{brand.siteName}</span>
           </div>
         </header>
         <main className="flex-1 overflow-auto px-6 pb-10 pt-8">

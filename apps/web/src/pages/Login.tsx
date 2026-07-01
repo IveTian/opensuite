@@ -2,10 +2,12 @@ import { Button, Input, Label, TextField } from "@heroui/react";
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Alert } from "../components/ui";
-import { MailIcon } from "../components/icons";
+import { BrandMark } from "../components/BrandMark";
+import { useBranding } from "../providers/branding";
 import { signIn } from "../lib/auth-client";
 
 export function Login() {
+  const { siteName } = useBranding();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -29,12 +31,10 @@ export function Login() {
     <div className="flex min-h-full items-center justify-center bg-background p-4">
       <div className="w-full max-w-sm">
         <div className="mb-7 flex flex-col items-center gap-3 text-center">
-          <div className="flex size-12 items-center justify-center rounded-2xl bg-accent text-accent-foreground shadow-surface">
-            <MailIcon className="size-6" />
-          </div>
+          <BrandMark boxClassName="size-12 rounded-2xl shadow-surface" iconClassName="size-6" />
           <div>
             <h1 className="text-2xl font-semibold text-foreground">欢迎回来</h1>
-            <p className="mt-1 text-sm text-muted">登录到你的 MailFlare 邮箱系统</p>
+            <p className="mt-1 text-sm text-muted">登录到你的 {siteName} 邮箱系统</p>
           </div>
         </div>
 

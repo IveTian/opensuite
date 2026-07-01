@@ -60,7 +60,7 @@
 
 **验证（已通过）**：5 包 typecheck + Worker 打包 + web 构建；**本地 PG + miniflare R2 实跑** —— 计数(inbox4/unread4)、搜索(q=apple→3)、分页(limit2/total4)、会话线程(原件+回复=2)、草稿(建→发→自动删)、回复线程头(inReplyTo/references)、附件(发→存→下载字节一致)、软删→回收站→恢复→永久删除。
 
-**待阶段三外**：富文本编辑器（当前纯文本）、批量操作、桌面通知。
+**待阶段三外**：富文本编辑器 ✅（阶段五）、批量操作 ✅（阶段五）、桌面通知（仍未做）。
 
 ---
 
@@ -77,6 +77,25 @@
 **验证（已通过）**：5 包 typecheck + Worker 打包(含 cron 触发器) + web 构建；**本地 PG + miniflare 实跑** —— 别名投递、catch-all 投递（含未匹配 422）、DoH 校验真实域(cloudflare.com MX/SPF/DMARC ✓)、Cron 触发(`/__scheduled`)过期邀请码、审计日志、mbox 导出。
 
 **未做（留作后续/可选）**：域名 onboarding 自动化（需 Cloudflare API token）、退信/抑制名单、IMAP/SMTP 网关、垃圾过滤、Agents SDK 自动回复。
+
+---
+
+## 阶段五 · Gmail 体验对齐 ✅
+
+**目标**：对照 Gmail 核心交互补齐收件三连与快捷操作，让 webmail 更接近日常主力邮箱。
+
+**已交付**
+- **归档 + 全部邮件**：新增 `archive` 文件夹与「全部邮件」聚合视图（除回收站/草稿外全部）；阅读页与批量均可归档，对应 Gmail 的 Archive / All Mail。
+- **批量操作**：列表勾选（含全选）+ 批量归档/删除/标已读/标未读/星标，后端 `POST /api/me/messages/bulk` 一次性处理（仅限本人邮件）。
+- **键盘快捷键**（Gmail 默认键位）：`c` 写信、`/` 搜索、`j/k` 上下、`o/Enter` 打开、`u/Esc` 返回、`x` 勾选、`e` 归档、`#` 删除、`s` 星标、`Shift+I/U` 标已读/未读、`?` 帮助浮层。
+- **发件人显示名**：`messages.from_name`（入站取 From 头 name、出站取用户名），列表与阅读页显示「张三」而非仅地址。
+- **标为未读**：阅读页与批量均支持（此前只能标已读）。
+- **移动端可用**：修复阅读面板在小屏被隐藏的缺陷（列表↔阅读切换 + 返回栏），并加移动端文件夹切换与写信入口。
+
+**验证（已通过）**：5 包 typecheck 全绿 + web 构建 + API Worker 打包；新增迁移 `0002_*.sql`（`ALTER TABLE messages ADD COLUMN from_name`）。
+> 部署前需在直连库执行 `pnpm db:migrate` 应用该迁移。
+
+**未做（留作后续）**：会话式堆叠阅读（当前会话其它邮件仍折叠纯文本）、标签 Labels/分类标签页、Snooze 稍后处理、Mute 免打扰、Undo Send 撤销发送、桌面通知。
 
 ---
 

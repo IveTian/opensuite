@@ -55,6 +55,8 @@ export const emailAddresses = pgTable(
     localPart: text("local_part").notNull(),
     // 冗余的完整地址（localPart@domain），便于唯一约束与查询
     address: text("address").notNull(),
+    // 自定义发信人显示名（发信时用作 From 头 name；为空则回退用户昵称）
+    senderName: text("sender_name"),
     type: text("type").notNull().default("mailbox"), // mailbox/alias/catch_all
     targetAddressId: uuid("target_address_id"), // 预留：alias 指向真实 mailbox
     isPrimary: boolean("is_primary").notNull().default(false),
@@ -139,6 +141,9 @@ export const inviteCodeRedemptions = pgTable("invite_code_redemptions", {
 // ============ system_settings 全局设置（实装，固定单行）============
 export const systemSettings = pgTable("system_settings", {
   id: text("id").primaryKey().default("global"),
+  // 品牌：站点名称与 Logo（logoUrl 可为外链或 data: URL；为空则用内置名称与图标）
+  siteName: text("site_name"),
+  logoUrl: text("logo_url"),
   registrationMode: text("registration_mode").notNull().default("invite_only"),
   requireAdminApproval: boolean("require_admin_approval").notNull().default(false),
   defaultPlanId: uuid("default_plan_id").references(() => plans.id, {
@@ -151,8 +156,20 @@ export const systemSettings = pgTable("system_settings", {
   signupDefaultDomainId: uuid("signup_default_domain_id").references(() => domains.id, {
     onDelete: "set null",
   }),
+  // 组织整体签名（HTML）：撰写时自动附加在个人签名之后
+  orgSignatureHtml: text("org_signature_html"),
   updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
   updatedByUserId: text("updated_by_user_id"),
+});
+
+// ============ user_settings 用户个人偏好（实装）============
+export const userSettings = pgTable("user_settings", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  // 个人签名（HTML）：撰写时自动插入正文
+  signatureHtml: text("signature_html"),
+  updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
 });
 
 // ============ audit_log 操作审计（可选实装，轻量）============
@@ -183,6 +200,8 @@ export const messages = pgTable(
     inReplyTo: text("in_reply_to"),
     references: text("references"),
     fromAddress: text("from_address"),
+    // 发件人显示名（From 头的 name 部分，收发一致展示「张三」而非仅地址）
+    fromName: text("from_name"),
     toAddresses: jsonb("to_addresses").$type<string[]>(),
     ccAddresses: jsonb("cc_addresses").$type<string[]>(),
     bccAddresses: jsonb("bcc_addresses").$type<string[]>(),
@@ -230,5 +249,6 @@ export type Plan = typeof plans.$inferSelect;
 export type UserQuota = typeof userQuota.$inferSelect;
 export type InviteCode = typeof inviteCodes.$inferSelect;
 export type SystemSettings = typeof systemSettings.$inferSelect;
+export type UserSettings = typeof userSettings.$inferSelect;
 export type Message = typeof messages.$inferSelect;
 export type Attachment = typeof attachments.$inferSelect;

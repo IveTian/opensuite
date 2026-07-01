@@ -14,11 +14,13 @@ import { Invites } from "./pages/admin/Invites";
 import { Settings } from "./pages/admin/Settings";
 import { Audit } from "./pages/admin/Audit";
 import { ThemeProvider } from "./providers/theme";
+import { BrandingProvider } from "./providers/branding";
 
 export function App() {
   return (
     <ThemeProvider>
-      <BrowserRouter>
+      <BrandingProvider>
+        <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
@@ -43,9 +45,10 @@ export function App() {
             <Route path="/mail" element={<Mailbox />} />
           </Route>
 
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </BrowserRouter>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </BrowserRouter>
+      </BrandingProvider>
     </ThemeProvider>
   );
 }
