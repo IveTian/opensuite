@@ -3,6 +3,7 @@ import type { ComponentType, SVGProps } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   AddressBookIcon,
+  CalendarIcon,
   LogOutIcon,
   MailIcon,
   MoonIcon,
@@ -40,6 +41,13 @@ export const APPS: AppEntry[] = [
     to: "/contacts",
     Icon: AddressBookIcon,
     tile: "bg-gradient-to-br from-emerald-400 to-teal-600",
+  },
+  {
+    key: "calendar",
+    name: "日历",
+    to: "/calendar",
+    Icon: CalendarIcon,
+    tile: "bg-gradient-to-br from-violet-400 to-purple-600",
   },
   {
     key: "admin",

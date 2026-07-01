@@ -328,6 +328,143 @@ export const attachments = pgTable("attachments", {
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
 });
 
+// ============ calendars 日历本（个人 / 部门 / 手动共享）============
+// personal：ownerUserId 拥有；department：关联部门，可见性派生自 directory_profiles；
+// shared：靠 calendar_members 显式授权。每用户懒创建一个 isDefault 的个人日历。
+export const calendars = pgTable(
+  "calendars",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    color: text("color"),
+    type: text("type").notNull().default("personal"), // personal/department/shared
+    // 个人日历拥有者；部门日历可记创建者
+    ownerUserId: text("owner_user_id").references(() => user.id, { onDelete: "set null" }),
+    // type=department 时关联的部门
+    departmentId: uuid("department_id").references(() => departments.id, {
+      onDelete: "set null",
+    }),
+    isDefault: boolean("is_default").notNull().default(false),
+    isVisible: boolean("is_visible").notNull().default(true),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("calendars_owner_idx").on(t.ownerUserId),
+    index("calendars_department_idx").on(t.departmentId),
+  ],
+);
+
+// ============ calendar_members 日历共享成员（跨部门/显式授权）============
+export const calendarMembers = pgTable(
+  "calendar_members",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    calendarId: uuid("calendar_id")
+      .notNull()
+      .references(() => calendars.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    role: text("role").notNull().default("viewer"), // viewer/editor/owner
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("calendar_members_cal_user_uniq").on(t.calendarId, t.userId),
+    index("calendar_members_user_idx").on(t.userId),
+  ],
+);
+
+// ============ calendar_events 事件（含 RRULE 重复规则）============
+// 列表接口按 [from,to] 展开重复为实例；本表存主事件 + override 行（recurrenceId 指向被改期的 occurrence）。
+export const calendarEvents = pgTable(
+  "calendar_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    calendarId: uuid("calendar_id")
+      .notNull()
+      .references(() => calendars.id, { onDelete: "cascade" }),
+    // 创建者/组织者归属
+    userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
+    // iCalendar UID（互操作用），应用层 crypto.randomUUID()+"@domain" 生成
+    uid: text("uid").notNull(),
+    title: text("title").notNull(),
+    description: text("description"),
+    location: text("location"),
+    color: text("color"),
+    allDay: boolean("all_day").notNull().default(false),
+    // 存 UTC instant；timezone 列辅助显示与 RRULE 展开
+    startsAt: timestamp("starts_at", { withTimezone: true, mode: "date" }).notNull(),
+    endsAt: timestamp("ends_at", { withTimezone: true, mode: "date" }).notNull(),
+    timezone: text("timezone").notNull().default("UTC"),
+    // RRULE 字符串（不含前缀），null 为单次
+    rrule: text("rrule"),
+    // override 实例指向的原始 occurrence 起点（null 为主事件）
+    recurrenceId: timestamp("recurrence_id", { withTimezone: true, mode: "date" }),
+    // 被删除/改期的 occurrence 起点（ISO 列表）
+    exdates: jsonb("exdates").$type<string[]>(),
+    status: text("status").notNull().default("confirmed"), // confirmed/tentative/cancelled
+    sequence: integer("sequence").notNull().default(0), // 改一次 +1（iCalendar SEQUENCE）
+    organizerEmail: text("organizer_email"),
+    reminders: jsonb("reminders").$type<{ minutesBefore: number; method: string }[]>(),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("calendar_events_calendar_idx").on(t.calendarId),
+    index("calendar_events_uid_idx").on(t.uid),
+    index("calendar_events_starts_idx").on(t.startsAt),
+  ],
+);
+
+// ============ event_attendees 参与者 + RSVP 回执 ============
+export const eventAttendees = pgTable(
+  "event_attendees",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    eventId: uuid("event_id")
+      .notNull()
+      .references(() => calendarEvents.id, { onDelete: "cascade" }),
+    // 内部用户带 userId；外部参与者为空
+    userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
+    email: text("email").notNull(),
+    displayName: text("display_name"),
+    role: text("role").notNull().default("required"), // required/optional
+    isOrganizer: boolean("is_organizer").notNull().default(false),
+    partstat: text("partstat").notNull().default("needs-action"), // needs-action/accepted/declined/tentative
+    respondedAt: timestamp("responded_at", { withTimezone: true, mode: "date" }),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("event_attendees_event_email_uniq").on(t.eventId, t.email),
+    index("event_attendees_event_idx").on(t.eventId),
+  ],
+);
+
+// ============ calendar_reminder_dispatch 提醒去重台账（cron 用）============
+// 记录已派发的 (事件, occurrence, 提前量, 方式)，保证提醒幂等不重复。
+export const calendarReminderDispatch = pgTable(
+  "calendar_reminder_dispatch",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    eventId: uuid("event_id")
+      .notNull()
+      .references(() => calendarEvents.id, { onDelete: "cascade" }),
+    occurrenceStart: timestamp("occurrence_start", { withTimezone: true, mode: "date" }).notNull(),
+    minutesBefore: integer("minutes_before").notNull(),
+    method: text("method").notNull(),
+    dispatchedAt: timestamp("dispatched_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("reminder_dispatch_uniq").on(
+      t.eventId,
+      t.occurrenceStart,
+      t.minutesBefore,
+      t.method,
+    ),
+  ],
+);
+
 // 行类型导出，供后端使用
 export type Domain = typeof domains.$inferSelect;
 export type EmailAddress = typeof emailAddresses.$inferSelect;
@@ -342,3 +479,8 @@ export type DirectoryProfile = typeof directoryProfiles.$inferSelect;
 export type PersonalContact = typeof personalContacts.$inferSelect;
 export type Message = typeof messages.$inferSelect;
 export type Attachment = typeof attachments.$inferSelect;
+export type CalendarRow = typeof calendars.$inferSelect;
+export type CalendarMemberRow = typeof calendarMembers.$inferSelect;
+export type CalendarEventRow = typeof calendarEvents.$inferSelect;
+export type EventAttendeeRow = typeof eventAttendees.$inferSelect;
+export type CalendarReminderDispatchRow = typeof calendarReminderDispatch.$inferSelect;

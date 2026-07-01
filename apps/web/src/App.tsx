@@ -6,6 +6,7 @@ import { Register } from "./pages/Register";
 import { Home } from "./pages/Home";
 import { Profile } from "./pages/Profile";
 import { Contacts } from "./pages/contacts/Contacts";
+import { Calendar } from "./pages/calendar/Calendar";
 import { Mailbox } from "./pages/mail/Mailbox";
 import { Dashboard } from "./pages/admin/Dashboard";
 import { Domains } from "./pages/admin/Domains";
@@ -49,6 +50,7 @@ export function App() {
             <Route path="/profile" element={<Profile />} />
             <Route path="/account" element={<Navigate to="/profile" replace />} />
             <Route path="/contacts" element={<Contacts />} />
+            <Route path="/calendar" element={<Calendar />} />
             <Route path="/mail" element={<Mailbox />} />
           </Route>
 

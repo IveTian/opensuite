@@ -5,6 +5,7 @@ import { PersonAvatar } from "../../components/PersonAvatar";
 import {
   AtSignIcon,
   BuildingIcon,
+  CalendarIcon,
   ChevronRightIcon,
   MailIcon,
   PencilIcon,
@@ -118,6 +119,7 @@ function Field({ icon, label, value }: { icon: ReactNode; label: string; value: 
 export function ContactDetail({
   view,
   onWriteMail,
+  onInvite,
   onAddToContacts,
   onEdit,
   onDelete,
@@ -125,6 +127,8 @@ export function ContactDetail({
 }: {
   view: ContactView;
   onWriteMail: () => void;
+  /** 邀约到日历 */
+  onInvite?: () => void;
   /** 组织条目：加入个人通讯录 */
   onAddToContacts?: () => void;
   /** 个人条目：编辑 */
@@ -154,11 +158,17 @@ export function ContactDetail({
           {view.jobTitle && <p className="text-sm text-muted">{view.jobTitle}</p>}
         </div>
 
-        <div className="mt-5 flex justify-center">
+        <div className="mt-5 flex justify-center gap-2">
           <Button variant="primary" onClick={onWriteMail}>
             <MailIcon className="size-4" />
             写邮件
           </Button>
+          {onInvite && (
+            <Button variant="outline" onClick={onInvite}>
+              <CalendarIcon className="size-4" />
+              邀约到日历
+            </Button>
+          )}
         </div>
 
         <div className="mt-6 divide-y divide-separator/60">
