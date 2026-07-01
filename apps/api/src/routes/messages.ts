@@ -1,5 +1,5 @@
 import { zValidator } from "@hono/zod-validator";
-import { and, asc, desc, eq, ilike, inArray, ne, notInArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, ilike, inArray, ne, notInArray, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import PostalMime from "postal-mime";
 import { attachments, emailAddresses, mailboxMembers, messages, userQuota } from "@mailflare/db";
@@ -164,6 +164,38 @@ export const messageRoutes = new Hono<AppEnv>()
       ),
     );
     return c.json(out);
+  })
+
+  /** 新邮件轮询：返回 since 之后到达的入站邮件（跨可访问地址），用于 web 通知 */
+  .get("/new", async (c) => {
+    const db = c.var.db;
+    const now = new Date();
+    const ids = await accessibleAddressIds(db, c.var.user!.id);
+    if (!ids.length) return c.json({ items: [], now: now.toISOString() });
+    const sinceStr = c.req.query("since");
+    const since = sinceStr ? new Date(sinceStr) : now;
+
+    const items = await db
+      .select({
+        id: messages.id,
+        addressId: messages.addressId,
+        fromAddress: messages.fromAddress,
+        fromName: messages.fromName,
+        subject: messages.subject,
+        createdAt: messages.createdAt,
+      })
+      .from(messages)
+      .where(
+        and(
+          inArray(messages.addressId, ids),
+          eq(messages.direction, "inbound"),
+          eq(messages.folder, "inbox"),
+          gt(messages.createdAt, since),
+        ),
+      )
+      .orderBy(desc(messages.createdAt))
+      .limit(20);
+    return c.json({ items, now: now.toISOString() });
   })
 
   /** 批量操作：勾选多封后一次性归档/删除/移回收件箱/标记（仅限本人邮件） */

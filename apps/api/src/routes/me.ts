@@ -31,6 +31,16 @@ export const meRoutes = new Hono<AppEnv>()
   .use("*", loadUser, requireAuth)
   .route("/messages", messageRoutes)
 
+  /** 实时通道：升级为 WebSocket 并路由到当前用户的 Durable Object */
+  .get("/ws", (c) => {
+    if (c.req.header("Upgrade") !== "websocket") {
+      return c.json({ error: "expected websocket" }, 426);
+    }
+    const ns = c.env.USER_HUB;
+    const stub = ns.get(ns.idFromName(c.var.user!.id));
+    return stub.fetch(c.req.raw);
+  })
+
   .get("/", (c) => {
     const u = c.var.user!;
     const profile: MeProfile = {

@@ -11,6 +11,7 @@ import type { BulkAction, MailboxAccount } from "@mailflare/shared";
 import {
   ArchiveIcon,
   ArrowLeftIcon,
+  BellIcon,
   DownloadIcon,
   FileIcon,
   InboxIcon,
@@ -31,6 +32,7 @@ import {
   XIcon,
 } from "../../components/icons";
 import { useFetch } from "../../hooks/useFetch";
+import { useMailRealtime } from "../../hooks/useMailRealtime";
 import { api } from "../../lib/api";
 import { buildForwardHtml, buildReplyHtml } from "../../lib/email-html";
 import { formatBytes, formatDate } from "../../lib/format";
@@ -344,6 +346,12 @@ export function Mailbox() {
     }
   }
 
+  // 新邮件实时通道（WebSocket → Durable Object）：零延迟刷新收件箱 + 可选桌面通知
+  const { perm: notifPerm, requestPermission: enableNotifications } = useMailRealtime({
+    icon: brand.logoUrl,
+    onNewMail: refreshAll,
+  });
+
   // 游标越界纠正 + 滚动到可视
   useEffect(() => {
     if (cursor > items.length - 1) setCursor(items.length ? items.length - 1 : 0);
@@ -569,6 +577,29 @@ export function Mailbox() {
             <RefreshIcon className="size-4" />
             {simBusy ? "模拟中…" : "模拟收信"}
           </Button>
+          {notifPerm === "default" && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="justify-start"
+              onClick={enableNotifications}
+            >
+              <BellIcon className="size-4" />
+              开启新邮件通知
+            </Button>
+          )}
+          {notifPerm === "granted" && (
+            <span className="flex h-8 items-center gap-2 rounded-lg px-3 text-sm text-muted">
+              <BellIcon className="size-4" />
+              新邮件通知已开启
+            </span>
+          )}
+          {notifPerm === "denied" && (
+            <span className="flex h-8 items-center gap-2 rounded-lg px-3 text-xs text-muted">
+              <BellIcon className="size-4" />
+              通知已被浏览器拒绝
+            </span>
+          )}
           <a
             href={`${API}/api/me/messages/export`}
             className="flex h-8 items-center gap-2 rounded-lg px-3 text-sm text-muted hover:bg-surface-secondary hover:text-foreground"

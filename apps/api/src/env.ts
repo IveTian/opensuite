@@ -16,6 +16,8 @@ export interface Bindings {
   RAW_EMAILS: R2Bucket;
   /** send_email 绑定（第一阶段占位，阶段二出站用） */
   EMAIL: SendEmail;
+  /** 每用户 WebSocket 中枢：入站邮件实时推送到浏览器 */
+  USER_HUB: DurableObjectNamespace;
 
   // vars / secrets
   BETTER_AUTH_SECRET: string;

@@ -76,6 +76,8 @@ export interface StoreInboundResult {
   stored: boolean;
   reason?: "no_mailbox";
   messageId?: string;
+  /** 实际投递到的 mailbox（用于实时通知收件人）；type=shared 时 userId 为空 */
+  deliveredTo?: { id: string; userId: string | null; type: string };
 }
 
 /**
@@ -156,5 +158,9 @@ export async function storeInboundEmail(
       .where(eq(userQuota.userId, addr.userId));
   }
 
-  return { stored: true, messageId: msg!.id };
+  return {
+    stored: true,
+    messageId: msg!.id,
+    deliveredTo: { id: addr.id, userId: addr.userId, type: addr.type },
+  };
 }

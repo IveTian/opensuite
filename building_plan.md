@@ -60,7 +60,7 @@
 
 **验证（已通过）**：5 包 typecheck + Worker 打包 + web 构建；**本地 PG + miniflare R2 实跑** —— 计数(inbox4/unread4)、搜索(q=apple→3)、分页(limit2/total4)、会话线程(原件+回复=2)、草稿(建→发→自动删)、回复线程头(inReplyTo/references)、附件(发→存→下载字节一致)、软删→回收站→恢复→永久删除。
 
-**待阶段三外**：富文本编辑器 ✅（阶段五）、批量操作 ✅（阶段五）、桌面通知（仍未做）。
+**待阶段三外**：富文本编辑器 ✅（阶段五）、批量操作 ✅（阶段五）、桌面通知 ✅（Durable Object 实时推送 + Notification）。
 
 ---
 

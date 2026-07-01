@@ -12,15 +12,17 @@ import { publicRoutes } from "./routes/public.js";
 const app = new Hono<AppEnv>();
 
 // 1) CORS：必须先于路由；origin 用具体前端地址（带凭据时不可用 *）
-app.use("/api/*", (c, next) =>
-  cors({
+//    WebSocket 升级请求跳过 CORS（其在 101 响应上改 header 可能出错，且 WS 有自身同源模型）
+app.use("/api/*", (c, next) => {
+  if (c.req.header("Upgrade") === "websocket") return next();
+  return cors({
     origin: c.env.WEB_ORIGIN,
     credentials: true,
     allowHeaders: ["Content-Type", "Authorization"],
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     maxAge: 600,
-  })(c, next),
-);
+  })(c, next);
+});
 
 // 2) 每请求注入 db + auth
 app.use("/api/*", contextMiddleware);
@@ -46,6 +48,9 @@ app.route("/api/admin", adminRoutes);
 
 // 导出供前端做 RPC 类型推断
 export type AppType = typeof app;
+
+// Durable Object：每用户 WebSocket 中枢（wrangler 需从入口模块找到该导出）
+export { UserHub } from "./do/user-hub.js";
 
 export default {
   fetch: app.fetch,
