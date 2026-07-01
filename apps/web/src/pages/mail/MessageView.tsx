@@ -31,6 +31,21 @@ interface Attach {
   sizeBytes: number | null;
   contentId?: string | null;
 }
+interface CalendarInvite {
+  attachmentId: string;
+  filename: string | null;
+  method: string | null;
+  uid: string | null;
+  summary: string | null;
+  description: string | null;
+  location: string | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  allDay: boolean;
+  organizer: string | null;
+  myPartstat: "needs-action" | "accepted" | "declined" | "tentative" | null;
+  eventId: string | null;
+}
 export interface MsgDetail {
   id: string;
   addressId: string;
@@ -50,6 +65,7 @@ export interface MsgDetail {
   sentAt: string | null;
   createdAt: string;
   attachments: Attach[];
+  calendarInvites?: CalendarInvite[];
 }
 interface ThreadItem {
   id: string;
@@ -213,6 +229,27 @@ function Body({ message }: { message: MsgDetail }) {
   return <p className="text-sm text-muted">（无正文）</p>;
 }
 
+function inviteStatusText(s: CalendarInvite["myPartstat"]): string {
+  return (
+    {
+      accepted: "已接受",
+      declined: "已拒绝",
+      tentative: "不确定",
+      "needs-action": "待回复",
+    }[s ?? "needs-action"] ?? "待回复"
+  );
+}
+
+function inviteMethodText(method: string | null): string {
+  return (
+    {
+      REQUEST: "邀请",
+      CANCEL: "已取消",
+      REPLY: "回执",
+    }[method ?? ""] ?? "日历"
+  );
+}
+
 export function MessageView({
   messageId,
   onReply,
@@ -230,6 +267,8 @@ export function MessageView({
   const avatarFor = useAvatars(m ? [m.fromAddress] : []);
   const nameOf = useContactNames();
   const [addState, setAddState] = useState<"idle" | "busy" | "done" | "error">("idle");
+  const [inviteBusy, setInviteBusy] = useState<string | null>(null);
+  const [inviteErr, setInviteErr] = useState("");
 
   if (!m) return <p className="text-sm text-muted">加载中…</p>;
 
@@ -281,6 +320,20 @@ export function MessageView({
         },
       },
     });
+  }
+
+  async function rsvpInvite(inv: CalendarInvite, partstat: "accepted" | "declined" | "tentative") {
+    if (!inv.eventId || inv.method !== "REQUEST") return;
+    setInviteErr("");
+    setInviteBusy(inv.attachmentId);
+    try {
+      await api.post(`/api/calendar/events/${inv.eventId}/rsvp`, { partstat });
+      await refetch();
+    } catch {
+      setInviteErr("回执失败，请稍后重试");
+    } finally {
+      setInviteBusy(null);
+    }
   }
 
   return (
@@ -386,6 +439,56 @@ export function MessageView({
               <Badge>{formatBytes(a.sizeBytes)}</Badge>
             </a>
           ))}
+        </div>
+      )}
+
+      {(m.calendarInvites?.length ?? 0) > 0 && (
+        <div className="mb-4 space-y-3">
+          {m.calendarInvites!.map((inv) => {
+            const canRespond = inv.method === "REQUEST" && Boolean(inv.eventId);
+            const busy = inviteBusy === inv.attachmentId;
+            return (
+              <div key={inv.attachmentId} className="rounded-2xl bg-surface p-4 shadow-surface">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-sm font-medium text-foreground">
+                    {inv.summary || inv.filename || "日历邀请"}
+                  </div>
+                  <Badge>{inviteMethodText(inv.method)}</Badge>
+                </div>
+                <div className="mt-2 space-y-1 text-sm text-muted">
+                  {inv.startsAt && (
+                    <div>
+                      时间：{formatDate(inv.startsAt)}
+                      {inv.endsAt ? ` - ${formatDate(inv.endsAt)}` : ""}
+                      {inv.allDay ? "（全天）" : ""}
+                    </div>
+                  )}
+                  {inv.location && <div>地点：{inv.location}</div>}
+                  {inv.organizer && <div>组织者：{inv.organizer}</div>}
+                </div>
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs text-muted">我的状态：{inviteStatusText(inv.myPartstat)}</span>
+                  {inv.method === "REQUEST" && (
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="ghost" onClick={() => rsvpInvite(inv, "declined")} isDisabled={!canRespond || busy}>
+                        拒绝
+                      </Button>
+                      <Button size="sm" variant="primary" onClick={() => rsvpInvite(inv, "accepted")} isDisabled={!canRespond || busy}>
+                        接受
+                      </Button>
+                      <Button size="sm" variant="secondary" onClick={() => rsvpInvite(inv, "tentative")} isDisabled={!canRespond || busy}>
+                        不确定
+                      </Button>
+                    </div>
+                  )}
+                </div>
+                {inv.method === "REQUEST" && !inv.eventId && (
+                  <p className="mt-2 text-xs text-muted">该邀请暂未关联到你的日历事件，暂不可回执。</p>
+                )}
+              </div>
+            );
+          })}
+          {inviteErr && <p className="text-xs text-danger">{inviteErr}</p>}
         </div>
       )}
 
