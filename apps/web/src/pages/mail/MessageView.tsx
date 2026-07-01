@@ -17,7 +17,8 @@ import {
   StarIcon,
   TrashIcon,
 } from "../../components/icons";
-import { useFetch } from "../../hooks/useFetch";
+import { useMailDetail } from "../../hooks/useMailDetail";
+import { useOnline } from "../../hooks/useOnline";
 import { useContactNames } from "../../hooks/useContactNames";
 import { api } from "../../lib/api";
 import { formatBytes, formatDate } from "../../lib/format";
@@ -262,36 +263,41 @@ export function MessageView({
   onChanged: () => void;
 }) {
   const navigate = useNavigate();
-  const { data: m, refetch } = useFetch<MsgDetail>(`/api/me/messages/${messageId}`);
-  const { data: thread } = useFetch<ThreadItem[]>(`/api/me/messages/${messageId}/thread`);
+  const online = useOnline();
+  const { data: m, refetch, loading, error, fromCache } = useMailDetail(messageId);
   const avatarFor = useAvatars(m ? [m.fromAddress] : []);
   const nameOf = useContactNames();
   const [addState, setAddState] = useState<"idle" | "busy" | "done" | "error">("idle");
   const [inviteBusy, setInviteBusy] = useState<string | null>(null);
   const [inviteErr, setInviteErr] = useState("");
 
-  if (!m) return <p className="text-sm text-muted">加载中…</p>;
+  if (loading) return <p className="text-sm text-muted">加载中…</p>;
+  if (!m) return <p className="text-sm text-danger">{error ?? "无法加载邮件"}</p>;
 
   async function star() {
+    if (!online) return;
     await api.patch(`/api/me/messages/${m!.id}`, { isStarred: !m!.isStarred });
     await refetch();
     onChanged();
   }
   async function remove() {
+    if (!online) return;
     if (m!.folder === "trash" && !confirm("永久删除这封邮件？")) return;
     await api.del(`/api/me/messages/${m!.id}`);
     onChanged();
   }
   async function archive() {
+    if (!online) return;
     await api.patch(`/api/me/messages/${m!.id}`, { folder: "archive" });
     onChanged();
   }
   async function markUnread() {
+    if (!online) return;
     await api.patch(`/api/me/messages/${m!.id}`, { isRead: false });
     onChanged();
   }
   async function addSender() {
-    if (!m!.fromAddress) return;
+    if (!online || !m!.fromAddress) return;
     setAddState("busy");
     try {
       await api.post("/api/contacts/personal", {
@@ -304,7 +310,7 @@ export function MessageView({
     }
   }
 
-  const others = (thread ?? []).filter((t) => t.id !== m.id);
+  const others: ThreadItem[] = [];
   const senderName = nameOf(m.fromAddress) || m.fromName;
 
   function createEvent() {
@@ -338,6 +344,11 @@ export function MessageView({
 
   return (
     <div className="mx-auto max-w-3xl">
+      {fromCache && (
+        <p className="mb-3 rounded-xl bg-surface-secondary px-3 py-2 text-xs text-muted">
+          离线缓存 · {error ? `${error} · ` : ""}部分操作需联网后可用
+        </p>
+      )}
       <div className="mb-4 flex items-start justify-between gap-4">
         <h1 className="text-xl font-semibold text-foreground">{m.subject || "(无主题)"}</h1>
         <div className="flex shrink-0 flex-wrap items-center gap-2">

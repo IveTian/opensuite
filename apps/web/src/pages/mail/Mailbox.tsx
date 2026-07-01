@@ -35,7 +35,10 @@ import {
   XIcon,
 } from "../../components/icons";
 import { useFetch } from "../../hooks/useFetch";
+import { useMailList } from "../../hooks/useMailList";
 import { useMailRealtime } from "../../hooks/useMailRealtime";
+import { useOnline } from "../../hooks/useOnline";
+import { cacheMessageDetail } from "../../lib/offline/mail-cache";
 import { useContactNames } from "../../hooks/useContactNames";
 import {
   AdvancedSearch,
@@ -145,6 +148,7 @@ export function Mailbox() {
   const navigate = useNavigate();
   const location = useLocation();
   const nameOf = useContactNames();
+  const online = useOnline();
   const { data: session } = useSession();
   const avatarImage = (session?.user as { image?: string | null } | undefined)?.image ?? null;
   const { data: accounts } = useFetch<MailboxAccount[]>("/api/me/accounts");
@@ -182,8 +186,17 @@ export function Mailbox() {
   const {
     data: listData,
     loading,
+    error: listError,
+    fromCache: listFromCache,
     refetch: refetchList,
-  } = useFetch<{ items: MsgItem[]; total: number }>(listPath);
+  } = useMailList({
+    accountId,
+    folder,
+    page,
+    searchActive,
+    listPath,
+    searchQ: search?.q,
+  });
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [composing, setComposing] = useState(false);
@@ -303,8 +316,13 @@ export function Mailbox() {
 
   async function openItem(item: MsgItem, idx?: number) {
     if (typeof idx === "number") setCursor(idx);
+    if (!online && folder === "draft") {
+      alert("离线模式下无法编辑草稿，请联网后再试");
+      return;
+    }
     if (folder === "draft") {
       const d = await api.get<MsgDetail>(`/api/me/messages/${item.id}`);
+      void cacheMessageDetail(d);
       startCompose({
         draftId: d.id,
         fromAddressId: d.addressId,
@@ -319,7 +337,7 @@ export function Mailbox() {
     }
     setComposing(false);
     setSelectedId(item.id);
-    if (!item.isRead) {
+    if (online && !item.isRead) {
       await api.patch(`/api/me/messages/${item.id}`, { isRead: true });
       refreshAll();
     }
@@ -327,6 +345,7 @@ export function Mailbox() {
 
   async function toggleStar(item: MsgItem, e: MouseEvent) {
     e.stopPropagation();
+    if (!online) return;
     await api.patch(`/api/me/messages/${item.id}`, { isStarred: !item.isStarred });
     refreshAll();
   }
@@ -345,6 +364,7 @@ export function Mailbox() {
 
   /** 批量动作：优先勾选集，其次当前打开邮件，最后键盘游标项 */
   async function bulkAction(action: BulkAction) {
+    if (!online) return;
     const ids = selected.size
       ? [...selected]
       : selectedId
@@ -366,6 +386,10 @@ export function Mailbox() {
   }
 
   function newCompose() {
+    if (!online) {
+      alert("离线模式下无法撰写邮件，请联网后再试");
+      return;
+    }
     // 默认从当前账号发信（不可发则退回首个可发账号）
     const from = currentAccount?.canSend ? currentAccount.id : sendable[0]?.id;
     startCompose({ fromAddressId: from });
@@ -580,9 +604,9 @@ export function Mailbox() {
         )}
 
         <div className="px-1 py-2">
-          <Button variant="primary" fullWidth onClick={newCompose}>
+          <Button variant="primary" fullWidth onClick={newCompose} isDisabled={!online}>
             <PencilIcon className="size-4" />
-            写邮件
+            {online ? "写邮件" : "离线不可写"}
           </Button>
         </div>
 
@@ -770,6 +794,14 @@ export function Mailbox() {
             >
               退出搜索
             </button>
+          </div>
+        )}
+
+        {(listFromCache || listError) && (
+          <div className="mx-3 mb-2 rounded-xl bg-surface-secondary px-3 py-2 text-xs text-muted">
+            {listFromCache && "显示离线缓存"}
+            {listFromCache && listError && " · "}
+            {listError}
           </div>
         )}
 
