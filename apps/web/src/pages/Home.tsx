@@ -1,7 +1,14 @@
 import { Button } from "@heroui/react";
 import type { ComponentType, SVGProps } from "react";
 import { useNavigate } from "react-router-dom";
-import { LogOutIcon, MailIcon, MoonIcon, ShieldIcon, SunIcon } from "../components/icons";
+import {
+  AddressBookIcon,
+  LogOutIcon,
+  MailIcon,
+  MoonIcon,
+  ShieldIcon,
+  SunIcon,
+} from "../components/icons";
 import { PersonAvatar } from "../components/PersonAvatar";
 import { BrandMark } from "../components/BrandMark";
 import { useTheme } from "../providers/theme";
@@ -25,6 +32,13 @@ const APPS: AppEntry[] = [
     to: "/mail",
     Icon: MailIcon,
     tile: "bg-gradient-to-br from-sky-400 to-blue-600",
+  },
+  {
+    key: "contacts",
+    name: "通讯录",
+    to: "/contacts",
+    Icon: AddressBookIcon,
+    tile: "bg-gradient-to-br from-emerald-400 to-teal-600",
   },
   {
     key: "admin",

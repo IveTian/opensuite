@@ -5,11 +5,13 @@ import { Login } from "./pages/Login";
 import { Register } from "./pages/Register";
 import { Home } from "./pages/Home";
 import { Account } from "./pages/Account";
+import { Contacts } from "./pages/contacts/Contacts";
 import { Mailbox } from "./pages/mail/Mailbox";
 import { Dashboard } from "./pages/admin/Dashboard";
 import { Domains } from "./pages/admin/Domains";
 import { Users } from "./pages/admin/Users";
 import { Addresses } from "./pages/admin/Addresses";
+import { Directory } from "./pages/admin/Directory";
 import { Plans } from "./pages/admin/Plans";
 import { Invites } from "./pages/admin/Invites";
 import { Settings } from "./pages/admin/Settings";
@@ -33,6 +35,7 @@ export function App() {
               <Route path="domains" element={<Domains />} />
               <Route path="users" element={<Users />} />
               <Route path="addresses" element={<Addresses />} />
+              <Route path="directory" element={<Directory />} />
               <Route path="plans" element={<Plans />} />
               <Route path="invites" element={<Invites />} />
               <Route path="settings" element={<Settings />} />
@@ -44,6 +47,7 @@ export function App() {
           <Route element={<ProtectedRoute />}>
             <Route path="/" element={<Home />} />
             <Route path="/account" element={<Account />} />
+            <Route path="/contacts" element={<Contacts />} />
             <Route path="/mail" element={<Mailbox />} />
           </Route>
 

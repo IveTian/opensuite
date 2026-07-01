@@ -3,6 +3,7 @@ import type { AppEnv } from "../../env.js";
 import { loadUser, requireAdmin } from "../../middleware/auth.js";
 import { addressRoutes } from "./addresses.js";
 import { auditRoutes } from "./audit.js";
+import { directoryRoutes } from "./directory.js";
 import { domainRoutes } from "./domains.js";
 import { inviteRoutes } from "./invites.js";
 import { planRoutes } from "./plans.js";
@@ -17,6 +18,7 @@ export const adminRoutes = new Hono<AppEnv>()
   .route("/settings", settingsRoutes)
   .route("/domains", domainRoutes)
   .route("/addresses", addressRoutes)
+  .route("/directory", directoryRoutes)
   .route("/users", userRoutes)
   .route("/plans", planRoutes)
   .route("/invite-codes", inviteRoutes)

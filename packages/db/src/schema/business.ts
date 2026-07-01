@@ -194,6 +194,70 @@ export const userSettings = pgTable("user_settings", {
   updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
 });
 
+// ============ departments 组织部门（通讯录用；层级预留）============
+// 组织通讯录 = 用户 + 部门模型。部门由 admin 维护，对所有登录用户可见。
+export const departments = pgTable("departments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  // 预留：多级部门；v1 平铺，不建自引用外键
+  parentId: uuid("parent_id"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+});
+
+// ============ directory_profiles 用户组织资料（通讯录用；每用户一行）============
+// 扩展 user 表的组织通讯录字段（部门/职位/电话等），由 admin 维护。
+// 姓名/邮箱/头像仍取自 user 表；此表只存组织补充信息。
+export const directoryProfiles = pgTable(
+  "directory_profiles",
+  {
+    userId: text("user_id")
+      .primaryKey()
+      .references(() => user.id, { onDelete: "cascade" }),
+    departmentId: uuid("department_id").references(() => departments.id, {
+      onDelete: "set null",
+    }),
+    jobTitle: text("job_title"),
+    phone: text("phone"),
+    mobile: text("mobile"),
+    extension: text("extension"),
+    location: text("location"),
+    // 部门内排序
+    sortOrder: integer("sort_order").notNull().default(0),
+    // 从组织目录隐藏该用户（默认展示）
+    isHidden: boolean("is_hidden").notNull().default(false),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [index("directory_profiles_dept_idx").on(t.departmentId)],
+);
+
+// ============ personal_contacts 个人通讯录（用户私有地址簿）============
+// 用户自己维护，可含系统外的人；displayName 即用户为其取的别名。
+export const personalContacts = pgTable(
+  "personal_contacts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    displayName: text("display_name").notNull(),
+    email: text("email").notNull(),
+    phone: text("phone"),
+    company: text("company"),
+    jobTitle: text("job_title"),
+    notes: text("notes"),
+    isFavorite: boolean("is_favorite").notNull().default(false),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("personal_contacts_user_idx").on(t.userId),
+    // 同一用户下同邮箱唯一：去重 + 让「从邮件加为联系人」可幂等 upsert
+    uniqueIndex("personal_contacts_user_email_uniq").on(t.userId, t.email),
+  ],
+);
+
 // ============ audit_log 操作审计（可选实装，轻量）============
 export const auditLog = pgTable(
   "audit_log",
@@ -273,5 +337,8 @@ export type InviteCode = typeof inviteCodes.$inferSelect;
 export type SystemSettings = typeof systemSettings.$inferSelect;
 export type UserSettings = typeof userSettings.$inferSelect;
 export type MailboxMember = typeof mailboxMembers.$inferSelect;
+export type Department = typeof departments.$inferSelect;
+export type DirectoryProfile = typeof directoryProfiles.$inferSelect;
+export type PersonalContact = typeof personalContacts.$inferSelect;
 export type Message = typeof messages.$inferSelect;
 export type Attachment = typeof attachments.$inferSelect;

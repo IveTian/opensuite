@@ -6,7 +6,7 @@ import {
   type ComponentType,
   type MouseEvent,
 } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import type { BulkAction, MailboxAccount } from "@mailflare/shared";
 import {
   ArchiveIcon,
@@ -24,6 +24,7 @@ import {
   RefreshIcon,
   SearchIcon,
   SendIcon,
+  SlidersIcon,
   StarFilledIcon,
   StarIcon,
   SunIcon,
@@ -33,6 +34,14 @@ import {
 } from "../../components/icons";
 import { useFetch } from "../../hooks/useFetch";
 import { useMailRealtime } from "../../hooks/useMailRealtime";
+import { useContactNames } from "../../hooks/useContactNames";
+import {
+  AdvancedSearch,
+  buildSearchQuery,
+  hasAnySearch,
+  searchSummary,
+  type MailSearch,
+} from "../../components/AdvancedSearch";
 import { api } from "../../lib/api";
 import { buildForwardHtml, buildReplyHtml } from "../../lib/email-html";
 import { formatBytes, formatDate } from "../../lib/format";
@@ -109,12 +118,15 @@ const SHORTCUTS: { keys: string; desc: string }[] = [
   { keys: "?", desc: "显示 / 隐藏快捷键" },
 ];
 
-/** 列表项主体展示名：出站看收件人，入站看发件人显示名 */
-function displayWho(m: MsgItem): string {
+/** 列表项主体展示名：出站看收件人，入站看发件人；优先用通讯录别名/目录名 */
+function displayWho(m: MsgItem, nameOf: (email?: string | null) => string | null): string {
   if (m.direction === "outbound") {
-    return (m.toAddresses ?? []).join(", ") || "(无收件人)";
+    const to = m.toAddresses ?? [];
+    const name = nameOf(to[0]);
+    if (name && to.length <= 1) return name;
+    return to.join(", ") || "(无收件人)";
   }
-  return m.fromName || m.fromAddress || "(未知发件人)";
+  return nameOf(m.fromAddress) || m.fromName || m.fromAddress || "(未知发件人)";
 }
 
 /** 该项用于头像目录解析的对方邮箱：出站取收件人，入站取发件人 */
@@ -126,6 +138,8 @@ export function Mailbox() {
   const { theme, toggle } = useTheme();
   const brand = useBranding();
   const navigate = useNavigate();
+  const location = useLocation();
+  const nameOf = useContactNames();
   const { data: accounts } = useFetch<MailboxAccount[]>("/api/me/accounts");
   const { data: mailSettings } = useFetch<MailSettings>("/api/me/mail-settings");
   const { data: quota } = useFetch<Quota | null>("/api/me/quota");
@@ -146,16 +160,23 @@ export function Mailbox() {
   );
 
   const [folder, setFolder] = useState<string>("inbox");
-  const [q, setQ] = useState("");
   const [qInput, setQInput] = useState("");
+  const [search, setSearch] = useState<MailSearch | null>(null);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [page, setPage] = useState(0);
+  const searchActive = hasAnySearch(search);
+  const listPath = searchActive
+    ? `/api/me/messages/search?${buildSearchQuery(search, {
+        limit: LIMIT,
+        offset: page * LIMIT,
+        accountId: accountId || undefined,
+      })}`
+    : `/api/me/messages?folder=${folder}&limit=${LIMIT}&offset=${page * LIMIT}${acctParam}`;
   const {
     data: listData,
     loading,
     refetch: refetchList,
-  } = useFetch<{ items: MsgItem[]; total: number }>(
-    `/api/me/messages?folder=${folder}&q=${encodeURIComponent(q)}&limit=${LIMIT}&offset=${page * LIMIT}${acctParam}`,
-  );
+  } = useFetch<{ items: MsgItem[]; total: number }>(listPath);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [composing, setComposing] = useState(false);
@@ -192,12 +213,39 @@ export function Mailbox() {
     setSelectedId(null);
   }
 
+  // 从通讯录「写邮件」跳转而来：带 compose 初始值时自动打开撰写面板
+  const composeState = (location.state as { compose?: ComposeInitial } | null)?.compose;
+  useEffect(() => {
+    if (!composeState || !accountList.length) return;
+    const from = currentAccount?.canSend ? currentAccount.id : sendable[0]?.id;
+    startCompose({ fromAddressId: from, ...composeState });
+    // 清掉 history state，避免返回/刷新重复打开
+    navigate(location.pathname, { replace: true, state: null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [composeState, accountList.length]);
+
+  // 从通讯录「查看全部往来」/「打开某封」跳转而来
+  const navSearch = (location.state as { search?: MailSearch; openMessageId?: string } | null);
+  useEffect(() => {
+    if (!navSearch?.search && !navSearch?.openMessageId) return;
+    if (navSearch.search) {
+      setSearch(navSearch.search);
+      setQInput(navSearch.search.q ?? "");
+      setPage(0);
+    }
+    if (navSearch.openMessageId) setSelectedId(navSearch.openMessageId);
+    navigate(location.pathname, { replace: true, state: null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navSearch?.search, navSearch?.openMessageId]);
+
   function refreshAll() {
     void refetchList();
     void refetchCounts();
   }
   function switchFolder(f: string) {
     setFolder(f);
+    setSearch(null);
+    setQInput("");
     setPage(0);
     setSelectedId(null);
     setComposing(false);
@@ -208,14 +256,35 @@ export function Mailbox() {
   function switchAccount(id: string) {
     setAccountId(id);
     setFolder("inbox");
+    setSearch(null);
+    setQInput("");
     setPage(0);
     setSelectedId(null);
     setComposing(false);
     setSelected(new Set());
     setCursor(-1);
   }
+  /** 顶部搜索框回车：作为关键词搜索（跨文件夹，除草稿/回收站） */
   function applySearch() {
-    setQ(qInput.trim());
+    const t = qInput.trim();
+    setSearch(t ? { q: t } : null);
+    setPage(0);
+    setSelectedId(null);
+    setCursor(-1);
+  }
+  /** 应用高级搜索条件 */
+  function runSearch(s: MailSearch) {
+    setSearch(hasAnySearch(s) ? s : null);
+    setQInput(s.q ?? "");
+    setShowAdvanced(false);
+    setPage(0);
+    setSelectedId(null);
+    setCursor(-1);
+  }
+  /** 退出搜索，回到文件夹视图 */
+  function clearSearch() {
+    setSearch(null);
+    setQInput("");
     setPage(0);
     setSelectedId(null);
     setCursor(-1);
@@ -647,11 +716,30 @@ export function Mailbox() {
                 if (e.key === "Enter") applySearch();
                 if (e.key === "Escape") e.currentTarget.blur();
               }}
-              placeholder="搜索主题 / 发件人…"
+              placeholder="搜索主题 / 联系人 / 内容…"
               aria-label="搜索邮件"
-              className="w-full rounded-xl border border-border bg-surface-secondary py-2 pl-9 pr-3 text-sm text-foreground placeholder:text-muted focus:border-field-border-focus focus:outline-none focus:ring-2 focus:ring-focus/40"
+              className="w-full rounded-xl border border-border bg-surface-secondary py-2 pl-9 pr-9 text-sm text-foreground placeholder:text-muted focus:border-field-border-focus focus:outline-none focus:ring-2 focus:ring-focus/40"
             />
+            {(qInput || searchActive) && (
+              <button
+                type="button"
+                aria-label="清除搜索"
+                onClick={clearSearch}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted hover:text-foreground"
+              >
+                <XIcon className="size-4" />
+              </button>
+            )}
           </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            isIconOnly
+            aria-label="高级搜索"
+            onClick={() => setShowAdvanced(true)}
+          >
+            <SlidersIcon className="size-4" />
+          </Button>
           <Button
             size="sm"
             variant="primary"
@@ -663,6 +751,21 @@ export function Mailbox() {
             <PencilIcon className="size-4" />
           </Button>
         </div>
+
+        {searchActive && (
+          <div className="flex items-center gap-2 px-3 pb-2">
+            <span className="min-w-0 flex-1 truncate text-xs text-muted">
+              搜索：{searchSummary(search)} · {total} 封
+            </span>
+            <button
+              type="button"
+              onClick={clearSearch}
+              className="shrink-0 text-xs text-accent hover:underline"
+            >
+              退出搜索
+            </button>
+          </div>
+        )}
 
         {/* 工具条：文件夹标题 / 批量操作 */}
         {selected.size > 0 ? (
@@ -723,7 +826,7 @@ export function Mailbox() {
               {items.map((m, i) => {
                 const active = selectedId === m.id;
                 const isCursor = i === cursor;
-                const who = displayWho(m);
+                const who = displayWho(m, nameOf);
                 const unread = !m.isRead && m.direction !== "outbound";
                 const checked = selected.has(m.id);
                 return (
@@ -883,6 +986,15 @@ export function Mailbox() {
           )}
         </div>
       </div>
+
+      {/* 高级搜索 */}
+      {showAdvanced && (
+        <AdvancedSearch
+          initial={search ?? {}}
+          onApply={runSearch}
+          onClose={() => setShowAdvanced(false)}
+        />
+      )}
 
       {/* 快捷键帮助 */}
       {showHelp && (

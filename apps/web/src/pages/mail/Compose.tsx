@@ -1,8 +1,10 @@
 import { Button, Input, Label, TextField } from "@heroui/react";
 import { Suspense, lazy, useEffect, useRef, useState, type FormEvent } from "react";
 import { Select } from "../../components/Select";
+import { RecipientInput } from "../../components/RecipientInput";
 import { Alert } from "../../components/ui";
 import { PaperclipIcon, SendIcon, XIcon } from "../../components/icons";
+import { useContactSuggestions } from "../../hooks/useContactSuggestions";
 import { api, ApiError } from "../../lib/api";
 import { extractInlineImages, htmlEscape, htmlToText } from "../../lib/email-html";
 import { formatBytes } from "../../lib/format";
@@ -85,6 +87,7 @@ export function Compose({
   const [busy, setBusy] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const touched = useRef(false);
+  const suggestions = useContactSuggestions();
 
   // 草稿自动保存（用户编辑后防抖 1.5s）
   useEffect(() => {
@@ -191,9 +194,16 @@ export function Compose({
         }))}
       />
 
-      <TextField>
-        <div className="flex items-center justify-between">
-          <Label>收件人（逗号分隔）</Label>
+      <RecipientInput
+        label="收件人（逗号分隔）"
+        placeholder="输入姓名或邮箱，可从通讯录联想"
+        value={to}
+        suggestions={suggestions}
+        onChange={(v) => {
+          setTo(v);
+          touched.current = true;
+        }}
+        labelRight={
           <button
             type="button"
             onClick={() => setShowCc((v) => !v)}
@@ -201,41 +211,31 @@ export function Compose({
           >
             抄送 / 密送
           </button>
-        </div>
-        <Input
-          value={to}
-          onChange={(e) => {
-            setTo(e.target.value);
-            touched.current = true;
-          }}
-          placeholder="a@b.com, c@d.com"
-        />
-      </TextField>
+        }
+      />
 
       {showCc && (
         <>
-          <TextField>
-            <Label>抄送 CC</Label>
-            <Input
-              value={cc}
-              onChange={(e) => {
-                setCc(e.target.value);
-                touched.current = true;
-              }}
-              placeholder="抄送收件人"
-            />
-          </TextField>
-          <TextField>
-            <Label>密送 BCC</Label>
-            <Input
-              value={bcc}
-              onChange={(e) => {
-                setBcc(e.target.value);
-                touched.current = true;
-              }}
-              placeholder="密送收件人"
-            />
-          </TextField>
+          <RecipientInput
+            label="抄送 CC"
+            placeholder="抄送收件人"
+            value={cc}
+            suggestions={suggestions}
+            onChange={(v) => {
+              setCc(v);
+              touched.current = true;
+            }}
+          />
+          <RecipientInput
+            label="密送 BCC"
+            placeholder="密送收件人"
+            value={bcc}
+            suggestions={suggestions}
+            onChange={(v) => {
+              setBcc(v);
+              touched.current = true;
+            }}
+          />
         </>
       )}
 

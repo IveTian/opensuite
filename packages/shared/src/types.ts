@@ -63,3 +63,53 @@ export interface MeProfile {
   role: Role;
   emailVerified: boolean;
 }
+
+// ----------------------- 通讯录 -----------------------
+
+/** 组织部门 */
+export interface Department {
+  id: string;
+  name: string;
+  parentId: string | null;
+  sortOrder: number;
+  /** 该部门成员数（列表接口返回） */
+  memberCount?: number;
+}
+
+/** 组织通讯录条目（= 用户 + 组织资料，姓名/邮箱/头像取自 user 表） */
+export interface DirectoryEntry {
+  userId: string;
+  name: string;
+  email: string;
+  image: string | null;
+  departmentId: string | null;
+  departmentName: string | null;
+  jobTitle: string | null;
+  phone: string | null;
+  mobile: string | null;
+  extension: string | null;
+  location: string | null;
+  /** 仅 admin 目录管理接口返回：是否从目录隐藏 */
+  isHidden?: boolean;
+}
+
+/** 组织通讯录一次拉取：部门 + 成员 */
+export interface DirectoryPayload {
+  departments: Department[];
+  entries: DirectoryEntry[];
+}
+
+/** 个人通讯录联系人 */
+export interface PersonalContact {
+  id: string;
+  displayName: string;
+  email: string;
+  phone: string | null;
+  company: string | null;
+  jobTitle: string | null;
+  notes: string | null;
+  isFavorite: boolean;
+}
+
+/** 邮件视图用：邮箱地址（小写）→ 显示名。个人别名优先，其次组织目录名 */
+export type ContactNameMap = Record<string, string>;

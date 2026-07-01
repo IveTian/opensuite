@@ -256,3 +256,43 @@ export const bulkActionSchema = z.object({
   action: z.enum(BULK_ACTIONS),
 });
 export type BulkActionInput = z.infer<typeof bulkActionSchema>;
+
+// ----------------------- 通讯录 -----------------------
+
+/** 个人通讯录：新建联系人 */
+export const createPersonalContactSchema = z.object({
+  /** 用户为其取的显示名/别名 */
+  displayName: z.string().trim().min(1, "请填写名称").max(120),
+  email: z.string().trim().toLowerCase().email("邮箱格式不合法").max(254),
+  phone: z.string().trim().max(40).nullable().optional(),
+  company: z.string().trim().max(120).nullable().optional(),
+  jobTitle: z.string().trim().max(120).nullable().optional(),
+  notes: z.string().trim().max(2000).nullable().optional(),
+  isFavorite: z.boolean().optional(),
+});
+export type CreatePersonalContactInput = z.infer<typeof createPersonalContactSchema>;
+
+/** 个人通讯录：更新联系人（字段可选） */
+export const updatePersonalContactSchema = createPersonalContactSchema.partial();
+export type UpdatePersonalContactInput = z.infer<typeof updatePersonalContactSchema>;
+
+/** 组织通讯录：新建/更新部门（admin） */
+export const upsertDepartmentSchema = z.object({
+  name: z.string().trim().min(1, "请填写部门名称").max(80),
+  parentId: z.string().uuid().nullable().optional(),
+  sortOrder: z.coerce.number().int().optional(),
+});
+export type UpsertDepartmentInput = z.infer<typeof upsertDepartmentSchema>;
+
+/** 组织通讯录：更新某用户的组织资料（admin） */
+export const updateDirectoryProfileSchema = z.object({
+  departmentId: z.string().uuid().nullable().optional(),
+  jobTitle: z.string().trim().max(120).nullable().optional(),
+  phone: z.string().trim().max(40).nullable().optional(),
+  mobile: z.string().trim().max(40).nullable().optional(),
+  extension: z.string().trim().max(20).nullable().optional(),
+  location: z.string().trim().max(120).nullable().optional(),
+  sortOrder: z.coerce.number().int().optional(),
+  isHidden: z.boolean().optional(),
+});
+export type UpdateDirectoryProfileInput = z.infer<typeof updateDirectoryProfileSchema>;

@@ -7,6 +7,7 @@ import { useBranding } from "../providers/branding";
 import { BrandMark } from "./BrandMark";
 import { PersonAvatar } from "./PersonAvatar";
 import {
+  AddressBookIcon,
   AtSignIcon,
   CreditCardIcon,
   DashboardIcon,
@@ -33,6 +34,7 @@ const NAV: {
   { to: "/admin/domains", label: "域名管理", icon: GlobeIcon },
   { to: "/admin/users", label: "用户管理", icon: UsersIcon },
   { to: "/admin/addresses", label: "邮箱地址", icon: AtSignIcon },
+  { to: "/admin/directory", label: "通讯录", icon: AddressBookIcon },
   { to: "/admin/plans", label: "配额套餐", icon: CreditCardIcon },
   { to: "/admin/invites", label: "邀请码", icon: TicketIcon },
   { to: "/admin/settings", label: "注册策略", icon: SlidersIcon },

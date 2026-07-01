@@ -9,12 +9,14 @@ import {
   ImageIcon,
   MailOpenIcon,
   PaperclipIcon,
+  PlusIcon,
   ReplyIcon,
   StarFilledIcon,
   StarIcon,
   TrashIcon,
 } from "../../components/icons";
 import { useFetch } from "../../hooks/useFetch";
+import { useContactNames } from "../../hooks/useContactNames";
 import { api } from "../../lib/api";
 import { formatBytes, formatDate } from "../../lib/format";
 
@@ -223,6 +225,8 @@ export function MessageView({
   const { data: m, refetch } = useFetch<MsgDetail>(`/api/me/messages/${messageId}`);
   const { data: thread } = useFetch<ThreadItem[]>(`/api/me/messages/${messageId}/thread`);
   const avatarFor = useAvatars(m ? [m.fromAddress] : []);
+  const nameOf = useContactNames();
+  const [addState, setAddState] = useState<"idle" | "busy" | "done" | "error">("idle");
 
   if (!m) return <p className="text-sm text-muted">加载中…</p>;
 
@@ -244,8 +248,22 @@ export function MessageView({
     await api.patch(`/api/me/messages/${m!.id}`, { isRead: false });
     onChanged();
   }
+  async function addSender() {
+    if (!m!.fromAddress) return;
+    setAddState("busy");
+    try {
+      await api.post("/api/contacts/personal", {
+        displayName: m!.fromName || m!.fromAddress,
+        email: m!.fromAddress,
+      });
+      setAddState("done");
+    } catch {
+      setAddState("error");
+    }
+  }
 
   const others = (thread ?? []).filter((t) => t.id !== m.id);
+  const senderName = nameOf(m.fromAddress) || m.fromName;
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -293,19 +311,35 @@ export function MessageView({
         <PersonAvatar
           url={avatarFor(m.fromAddress)}
           email={m.fromAddress}
-          seed={m.fromName || m.fromAddress}
+          seed={senderName || m.fromAddress}
           className="size-10 shrink-0"
         />
         <div className="min-w-0 space-y-0.5 text-sm text-muted">
-          <div>
-            <span className="text-foreground">发件人：</span>
-            {m.fromName ? (
-              <>
-                {m.fromName} <span className="text-muted">&lt;{m.fromAddress}&gt;</span>
-              </>
-            ) : (
-              m.fromAddress
-            )}
+          <div className="flex flex-wrap items-center gap-2">
+            <span>
+              <span className="text-foreground">发件人：</span>
+              {senderName ? (
+                <>
+                  {senderName} <span className="text-muted">&lt;{m.fromAddress}&gt;</span>
+                </>
+              ) : (
+                m.fromAddress
+              )}
+            </span>
+            {m.fromAddress &&
+              (addState === "done" ? (
+                <span className="text-xs text-success-soft-foreground">已加入通讯录</span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={addSender}
+                  disabled={addState === "busy"}
+                  className="inline-flex items-center gap-0.5 text-xs text-accent hover:underline disabled:text-muted"
+                >
+                  <PlusIcon className="size-3.5" />
+                  {addState === "error" ? "重试加入" : "加为联系人"}
+                </button>
+              ))}
           </div>
           <div>
             <span className="text-foreground">收件人：</span>

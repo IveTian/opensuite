@@ -1,5 +1,19 @@
 import { zValidator } from "@hono/zod-validator";
-import { and, asc, desc, eq, gt, ilike, inArray, ne, notInArray, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  gte,
+  ilike,
+  inArray,
+  lte,
+  ne,
+  notInArray,
+  or,
+  sql,
+} from "drizzle-orm";
 import { Hono } from "hono";
 import PostalMime from "postal-mime";
 import { attachments, emailAddresses, mailboxMembers, messages, userQuota } from "@mailflare/db";
@@ -196,6 +210,87 @@ export const messageRoutes = new Hono<AppEnv>()
       .orderBy(desc(messages.createdAt))
       .limit(20);
     return c.json({ items, now: now.toISOString() });
+  })
+
+  /**
+   * 高级搜索：多条件组合，跨可访问地址。
+   * 支持 q / from / to / subject / participant（与某人往来）/ hasAttachment /
+   * unread / starred / dateFrom / dateTo / folder（不传或 all=除草稿与回收站外全部）。
+   * 返回 {items,total}，字段与列表一致，前端可直接复用渲染。
+   */
+  .get("/search", async (c) => {
+    const db = c.var.db;
+    const user = c.var.user!;
+    const query = c.req.query();
+    const limit = Math.min(Number(query.limit ?? 50), 100);
+    const offset = Math.max(Number(query.offset ?? 0), 0);
+
+    const ids = await scopeIds(db, user.id, query.addressId);
+    if (!ids?.length) return c.json({ items: [], total: 0 });
+
+    const conds = [inArray(messages.addressId, ids)];
+
+    const folder = query.folder?.trim();
+    if (folder && folder !== "all") conds.push(eq(messages.folder, folder));
+    else conds.push(notInArray(messages.folder, ["draft", "trash"]));
+
+    const like = (s: string) => `%${s.trim()}%`;
+
+    if (query.q?.trim()) {
+      const l = like(query.q);
+      conds.push(
+        or(
+          ilike(messages.subject, l),
+          ilike(messages.snippet, l),
+          ilike(messages.fromAddress, l),
+          sql`${messages.toAddresses}::text ilike ${l}`,
+        )!,
+      );
+    }
+    if (query.from?.trim()) conds.push(ilike(messages.fromAddress, like(query.from)));
+    if (query.to?.trim()) conds.push(sql`${messages.toAddresses}::text ilike ${like(query.to)}`);
+    if (query.subject?.trim()) conds.push(ilike(messages.subject, like(query.subject)));
+    if (query.participant?.trim()) {
+      // 与某人往来：对方是发件人，或对方在收件人/抄送里（引号界定完整地址）
+      const p = query.participant.trim();
+      const inList = `%"${p}"%`;
+      conds.push(
+        or(
+          ilike(messages.fromAddress, p),
+          sql`${messages.toAddresses}::text ilike ${inList}`,
+          sql`${messages.ccAddresses}::text ilike ${inList}`,
+        )!,
+      );
+    }
+    if (query.hasAttachment === "1") {
+      conds.push(sql`exists (select 1 from attachments a where a.message_id = ${messages.id})`);
+    }
+    if (query.unread === "1") conds.push(eq(messages.isRead, false));
+    if (query.starred === "1") conds.push(eq(messages.isStarred, true));
+    if (query.dateFrom) {
+      const d = new Date(query.dateFrom);
+      if (!Number.isNaN(d.getTime())) conds.push(gte(messages.createdAt, d));
+    }
+    if (query.dateTo) {
+      const d = new Date(query.dateTo);
+      if (!Number.isNaN(d.getTime())) {
+        d.setHours(23, 59, 59, 999);
+        conds.push(lte(messages.createdAt, d));
+      }
+    }
+
+    const where = and(...conds);
+    const [items, totalRow] = await Promise.all([
+      db
+        .select(LIST_FIELDS)
+        .from(messages)
+        .where(where)
+        .orderBy(desc(messages.createdAt))
+        .limit(limit)
+        .offset(offset),
+      db.select({ n: sql<number>`count(*)::int` }).from(messages).where(where),
+    ]);
+    return c.json({ items, total: totalRow[0]?.n ?? 0 });
   })
 
   /** 批量操作：勾选多封后一次性归档/删除/移回收件箱/标记（仅限本人邮件） */
