@@ -141,7 +141,7 @@ export function Contacts() {
   return (
     <div className="flex h-full flex-col bg-background">
       {/* 顶栏 */}
-      <header className="flex items-center justify-between border-b border-border px-4 py-3 sm:px-6">
+      <header className="flex shrink-0 items-center justify-between border-b border-border px-4 py-2.5 sm:px-6">
         <AppSwitcher current="contacts" />
         <div className="flex items-center gap-1.5">
           <Button variant="ghost" isIconOnly aria-label="切换主题" onClick={toggle}>
