@@ -260,6 +260,24 @@ const LIST_FIELDS = {
   receivedAt: messages.receivedAt,
   sentAt: messages.sentAt,
   createdAt: messages.createdAt,
+  hasAttachments: sql<boolean>`
+    exists (
+      select 1
+      from attachments a
+      where a.message_id = ${messages.id}
+    )
+  `,
+  hasCalendarInvite: sql<boolean>`
+    exists (
+      select 1
+      from attachments a
+      where a.message_id = ${messages.id}
+        and (
+          lower(coalesce(a.content_type, '')) like '%text/calendar%'
+          or lower(coalesce(a.filename, '')) like '%.ics'
+        )
+    )
+  `,
 };
 
 export const messageRoutes = new Hono<AppEnv>()
