@@ -15,6 +15,7 @@ import {
   LogOutIcon,
   MenuIcon,
   MoonIcon,
+  RefreshIcon,
   ScrollIcon,
   SlidersIcon,
   SunIcon,
@@ -38,6 +39,7 @@ const NAV: {
   { to: "/admin/invites", label: "邀请码", icon: TicketIcon },
   { to: "/admin/settings", label: "注册策略", icon: SlidersIcon },
   { to: "/admin/audit", label: "审计日志", icon: ScrollIcon },
+  { to: "/admin/simulate", label: "模拟收信", icon: RefreshIcon },
 ];
 
 export function AdminLayout() {

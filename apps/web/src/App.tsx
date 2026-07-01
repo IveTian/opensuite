@@ -17,6 +17,7 @@ import { Plans } from "./pages/admin/Plans";
 import { Invites } from "./pages/admin/Invites";
 import { Settings } from "./pages/admin/Settings";
 import { Audit } from "./pages/admin/Audit";
+import { SimulateInbound } from "./pages/admin/SimulateInbound";
 import { OfflineBanner } from "./components/OfflineBanner";
 import { MobileBottomNav } from "./components/MobileBottomNav";
 import { PwaInstallPrompt } from "./components/PwaInstallPrompt";
@@ -49,6 +50,7 @@ export function App() {
               <Route path="invites" element={<Invites />} />
               <Route path="settings" element={<Settings />} />
               <Route path="audit" element={<Audit />} />
+              <Route path="simulate" element={<SimulateInbound />} />
             </Route>
           </Route>
 

@@ -10,9 +10,16 @@ import {
   PencilIcon,
   SendIcon,
   ShieldIcon,
+  SlidersIcon,
   SunIcon,
   UserIcon,
+  DownloadIcon,
 } from "../components/icons";
+import {
+  setMailDisplayMode,
+  useMailDisplayMode,
+  type MailDisplayMode,
+} from "../lib/mail-display";
 import {
   PersonAvatar,
   setGravatarEnabled,
@@ -23,6 +30,8 @@ import { api, ApiError } from "../lib/api";
 import { formatBytes } from "../lib/format";
 import { signOut, useSession } from "../lib/auth-client";
 import { useTheme } from "../providers/theme";
+
+const API = import.meta.env.VITE_API_ORIGIN;
 
 const RichTextEditor = lazy(() => import("../components/RichTextEditor"));
 
@@ -50,8 +59,26 @@ const SECTIONS = [
   { key: "profile", label: "个人资料", icon: UserIcon },
   { key: "mailboxes", label: "邮箱与配额", icon: AtSignIcon },
   { key: "sending", label: "发信设置", icon: SendIcon },
+  { key: "display", label: "显示偏好", icon: SlidersIcon },
   { key: "privacy", label: "隐私", icon: ShieldIcon },
 ] as const;
+
+const DISPLAY_OPTIONS: {
+  value: MailDisplayMode;
+  title: string;
+  desc: string;
+}[] = [
+  {
+    value: "split",
+    title: "双栏",
+    desc: "列表与阅读窗并排显示；列表项带头像与摘要预览（当前默认样式）。",
+  },
+  {
+    value: "single",
+    title: "单列",
+    desc: "Gmail 风格：每行显示发件人、主题与摘要、附件/日程图标、时间；阅读时占满整页。",
+  },
+];
 type SectionKey = (typeof SECTIONS)[number]["key"];
 
 /** 单个邮箱的发信人显示名编辑行 */
@@ -159,6 +186,7 @@ export function Profile() {
   const shownAvatar = avatar === undefined ? sessionImage : avatar;
   const [avatarBusy, setAvatarBusy] = useState(false);
   const gravatarEnabled = useGravatarEnabled();
+  const mailDisplay = useMailDisplayMode();
 
   async function onAvatarFile(file?: File) {
     if (!file) return;
@@ -397,6 +425,20 @@ export function Profile() {
                 <h2 className="mb-3 text-sm font-semibold text-foreground">我的邮箱地址</h2>
                 <Table columns={cols} rows={addresses ?? []} empty="暂无邮箱地址" />
               </div>
+
+              <Panel>
+                <h2 className="mb-1 text-sm font-semibold text-foreground">导出邮件</h2>
+                <p className="mb-4 text-xs text-muted">
+                  下载收件箱与已发文件夹中的邮件为 .mbox 格式，可用于迁移或本地备份。
+                </p>
+                <a
+                  href={`${API}/api/me/messages/export`}
+                  className="inline-flex h-9 items-center gap-2 rounded-xl bg-surface-secondary px-4 text-sm text-foreground hover:bg-default-soft"
+                >
+                  <DownloadIcon className="size-4" />
+                  导出 .mbox
+                </a>
+              </Panel>
             </div>
           )}
 
@@ -446,20 +488,62 @@ export function Profile() {
             </div>
           )}
 
+          {section === "display" && (
+            <Panel>
+              <h2 className="mb-1 text-sm font-semibold text-foreground">邮箱显示</h2>
+              <p className="mb-4 text-xs text-muted">选择邮件列表与阅读区域的布局，仅本设备生效。</p>
+              <div className="flex flex-col gap-2">
+                {DISPLAY_OPTIONS.map((opt) => {
+                  const active = mailDisplay === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setMailDisplayMode(opt.value)}
+                      className={
+                        "rounded-xl border px-4 py-3 text-left transition-colors " +
+                        (active
+                          ? "border-accent bg-accent/5 ring-1 ring-accent/30"
+                          : "border-border hover:bg-surface-secondary")
+                      }
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-sm font-semibold text-foreground">{opt.title}</span>
+                        <span
+                          className={
+                            "size-4 shrink-0 rounded-full border-2 " +
+                            (active ? "border-accent bg-accent" : "border-muted")
+                          }
+                          aria-hidden
+                        />
+                      </div>
+                      <p className="mt-1 text-xs leading-relaxed text-muted">{opt.desc}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </Panel>
+          )}
+
           {section === "privacy" && (
             <Panel>
-              <div className="flex items-center justify-between gap-4">
+              <label className="flex cursor-pointer items-start gap-3">
+                <Switch
+                  isSelected={gravatarEnabled}
+                  onChange={setGravatarEnabled}
+                  className="mt-0.5 shrink-0"
+                  aria-label="用 Gravatar 显示外部头像"
+                />
                 <div className="min-w-0">
-                  <h2 className="text-sm font-semibold text-foreground">
+                  <span className="text-sm font-semibold text-foreground">
                     用 Gravatar 显示外部头像
-                  </h2>
+                  </span>
                   <p className="mt-1 text-xs text-muted">
                     开启后会按对方邮箱向 gravatar.com 查询头像（会把联系人邮箱的哈希发给第三方）。
                     本系统内部用户仍优先用其上传的头像；此开关仅本设备生效。
                   </p>
                 </div>
-                <Switch isSelected={gravatarEnabled} onChange={setGravatarEnabled} />
-              </div>
+              </label>
             </Panel>
           )}
         </div>

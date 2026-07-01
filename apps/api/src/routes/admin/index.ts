@@ -9,11 +9,13 @@ import { inviteRoutes } from "./invites.js";
 import { planRoutes } from "./plans.js";
 import { settingsRoutes } from "./settings.js";
 import { statsRoutes } from "./stats.js";
+import { toolsRoutes } from "./tools.js";
 import { userRoutes } from "./users.js";
 
 /** 管理后台路由：全部要求管理员 */
 export const adminRoutes = new Hono<AppEnv>()
   .use("*", loadUser, requireAdmin)
+  .route("/tools", toolsRoutes)
   .route("/stats", statsRoutes)
   .route("/settings", settingsRoutes)
   .route("/domains", domainRoutes)

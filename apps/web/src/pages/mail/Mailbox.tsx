@@ -13,7 +13,6 @@ import {
   ArrowLeftIcon,
   BellIcon,
   CalendarIcon,
-  DownloadIcon,
   FileIcon,
   InboxIcon,
   KeyboardIcon,
@@ -50,6 +49,7 @@ import {
   type MailSearch,
 } from "../../components/AdvancedSearch";
 import { api } from "../../lib/api";
+import { useMailDisplayMode } from "../../lib/mail-display";
 import { buildForwardHtml, buildReplyHtml } from "../../lib/email-html";
 import { formatBytes, formatDate } from "../../lib/format";
 import { useTheme } from "../../providers/theme";
@@ -97,7 +97,6 @@ interface Quota {
   storageQuotaBytes: number;
 }
 
-const API = import.meta.env.VITE_API_ORIGIN;
 const FOLDERS: {
   key: string;
   label: string;
@@ -152,6 +151,8 @@ export function Mailbox() {
   const nameOf = useContactNames();
   const online = useOnline();
   const isMobile = useIsMobile();
+  const mailDisplay = useMailDisplayMode();
+  const isSingleList = mailDisplay === "single";
   const { setHideBottomNav } = useMobileChrome();
   const { data: session } = useSession();
   const avatarImage = (session?.user as { image?: string | null } | undefined)?.image ?? null;
@@ -206,7 +207,6 @@ export function Mailbox() {
   const [composing, setComposing] = useState(false);
   const [composeInitial, setComposeInitial] = useState<ComposeInitial | undefined>();
   const [composeKey, setComposeKey] = useState(0);
-  const [simBusy, setSimBusy] = useState(false);
   // 批量勾选 + 键盘游标 + 快捷键帮助
   const [selected, setSelected] = useState<Set<string>>(new Set());
   // -1 = 无游标（未用键盘导航时不高亮任何项，避免顶部默认蓝圈）
@@ -435,28 +435,6 @@ export function Mailbox() {
     });
   }
 
-  async function simulate() {
-    const addr = currentAccount ?? accountList[0];
-    if (!addr) return alert("你还没有邮箱地址");
-    setSimBusy(true);
-    const raw = [
-      "From: 测试人 <tester@example.net>",
-      `To: ${addr.address}`,
-      `Subject: 测试入站邮件 ${new Date().toLocaleTimeString("zh-CN")}`,
-      `Message-ID: <${Math.random().toString(36).slice(2)}@example.net>`,
-      "Content-Type: text/plain; charset=utf-8",
-      "",
-      "这是一封用于本地测试的入站邮件，验证收件存储链路。",
-    ].join("\r\n");
-    try {
-      await api.post("/api/me/messages/simulate-inbound", { addressId: addr.id, raw });
-      switchFolder("inbox");
-      refreshAll();
-    } finally {
-      setSimBusy(false);
-    }
-  }
-
   // 新邮件实时通道（WebSocket → Durable Object）：零延迟刷新收件箱 + 可选桌面通知
   const { perm: notifPerm, requestPermission: enableNotifications } = useMailRealtime({
     icon: brand.logoUrl,
@@ -677,16 +655,6 @@ export function Mailbox() {
             <KeyboardIcon className="size-4" />
             快捷键
           </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="justify-start"
-            onClick={simulate}
-            isDisabled={simBusy}
-          >
-            <RefreshIcon className="size-4" />
-            {simBusy ? "模拟中…" : "模拟收信"}
-          </Button>
           {notifPerm === "default" && (
             <Button
               size="sm"
@@ -710,21 +678,19 @@ export function Mailbox() {
               通知已被浏览器拒绝
             </span>
           )}
-          <a
-            href={`${API}/api/me/messages/export`}
-            className="flex h-8 items-center gap-2 rounded-lg px-3 text-sm text-muted hover:bg-surface-secondary hover:text-foreground"
-          >
-            <DownloadIcon className="size-4" />
-            导出 .mbox
-          </a>
         </div>
       </aside>
 
       {/* 列表 */}
       <div
         className={
-          (readerOpen ? "hidden " : "flex ") +
-          "w-full shrink-0 flex-col border-r border-border sm:flex sm:w-80 lg:w-96"
+          (readerOpen && isSingleList
+            ? "hidden "
+            : readerOpen
+              ? "hidden sm:flex "
+              : "flex ") +
+          "w-full shrink-0 flex-col border-r border-border " +
+          (isSingleList ? "min-w-0 flex-1" : "sm:w-80 lg:w-96")
         }
       >
         {/* 移动端：文件夹横向切换 + 账号 */}
@@ -896,98 +862,154 @@ export function Mailbox() {
                 const who = displayWho(m, nameOf);
                 const unread = !m.isRead && m.direction !== "outbound";
                 const checked = selected.has(m.id);
+                const when = formatDate(m.receivedAt ?? m.sentAt ?? m.createdAt);
+                const subject = m.subject || "(无主题)";
+                const rowClass =
+                  "group flex items-center gap-2 rounded-xl px-2 py-1.5 transition-colors " +
+                  (active
+                    ? "bg-surface shadow-surface"
+                    : "hover:bg-surface-secondary") +
+                  (isCursor && !active ? " ring-1 ring-accent/50" : "") +
+                  (checked ? " bg-accent/10" : "");
+                const starBtn = (
+                  <button
+                    aria-label={m.isStarred ? "取消星标" : "星标"}
+                    onClick={(e) => toggleStar(m, e)}
+                    className={
+                      "shrink-0 " +
+                      (m.isStarred
+                        ? "text-warning"
+                        : "text-muted opacity-40 hover:opacity-100")
+                    }
+                  >
+                    {m.isStarred ? (
+                      <StarFilledIcon className="size-4" />
+                    ) : (
+                      <StarIcon className="size-4" />
+                    )}
+                  </button>
+                );
                 return (
                   <li key={m.id} data-idx={i}>
-                    <div
-                      className={
-                        "group flex items-start gap-2 rounded-2xl p-2.5 transition-colors " +
-                        (active
-                          ? "bg-surface shadow-surface"
-                          : "hover:bg-surface-secondary") +
-                        (isCursor && !active ? " ring-1 ring-accent/50" : "") +
-                        (checked ? " bg-accent/10" : "")
-                      }
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggleSelect(m.id)}
-                        aria-label="选择邮件"
-                        className="mt-2 size-5 shrink-0 sm:size-4"
-                      />
-                      <button
-                        onClick={() => openItem(m, i)}
-                        className="flex min-w-0 flex-1 items-start gap-3 text-left"
-                      >
-                        <PersonAvatar
-                          url={avatarFor(whoEmail(m))}
-                          email={whoEmail(m)}
-                          seed={who}
-                          className="size-9 shrink-0"
+                    {isSingleList ? (
+                      <div className={rowClass}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleSelect(m.id)}
+                          aria-label="选择邮件"
+                          className="size-4 shrink-0"
                         />
-                        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                          <span className="flex items-center justify-between gap-2">
-                            <span
-                              className={
-                                "truncate text-sm leading-tight text-foreground " +
-                                (unread ? "font-semibold" : "")
-                              }
-                            >
-                              {who}
-                            </span>
-                            <span className="flex shrink-0 items-center gap-1.5">
-                              <span className="whitespace-nowrap text-xs text-muted">
-                                {formatDate(m.receivedAt ?? m.sentAt ?? m.createdAt)}
-                              </span>
-                              {unread && <span className="size-1.5 rounded-full bg-accent" />}
-                            </span>
-                          </span>
+                        <button
+                          onClick={() => openItem(m, i)}
+                          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                        >
                           <span
                             className={
-                              "truncate text-xs leading-tight " +
-                              (unread ? "font-medium text-foreground" : "text-muted")
+                              "w-24 shrink-0 truncate text-sm sm:w-32 " +
+                              (unread ? "font-semibold text-foreground" : "text-foreground")
                             }
                           >
-                            {m.subject || "(无主题)"}
+                            {who}
                           </span>
-                          {(m.hasAttachments || m.hasCalendarInvite) && (
-                            <span className="flex items-center gap-2 text-[11px] leading-tight text-muted">
-                              {m.hasCalendarInvite && (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-1.5 py-0.5 text-accent">
-                                  <CalendarIcon className="size-3" />
-                                  日程
-                                </span>
-                              )}
-                              {m.hasAttachments && (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-surface-secondary px-1.5 py-0.5 text-muted">
-                                  <PaperclipIcon className="size-3" />
-                                  附件
-                                </span>
-                              )}
+                          <span className="flex min-w-0 flex-1 items-baseline gap-1 truncate text-sm">
+                            <span
+                              className={
+                                "shrink-0 " + (unread ? "font-semibold text-foreground" : "text-foreground")
+                              }
+                            >
+                              {subject}
                             </span>
-                          )}
-                          <span className="truncate text-xs leading-tight text-muted">
-                            {m.snippet}
+                            {m.snippet && (
+                              <>
+                                <span className="shrink-0 text-muted"> — </span>
+                                <span className="truncate text-muted">{m.snippet}</span>
+                              </>
+                            )}
                           </span>
-                        </span>
-                      </button>
-                      <button
-                        aria-label={m.isStarred ? "取消星标" : "星标"}
-                        onClick={(e) => toggleStar(m, e)}
-                        className={
-                          "mt-1 shrink-0 " +
-                          (m.isStarred
-                            ? "text-warning"
-                            : "text-muted opacity-40 hover:opacity-100")
-                        }
-                      >
-                        {m.isStarred ? (
-                          <StarFilledIcon className="size-4" />
-                        ) : (
-                          <StarIcon className="size-4" />
-                        )}
-                      </button>
-                    </div>
+                          <span className="flex shrink-0 items-center gap-1.5 text-muted">
+                            {m.hasCalendarInvite && (
+                              <CalendarIcon className="size-3.5" aria-label="含日程邀请" />
+                            )}
+                            {m.hasAttachments && (
+                              <PaperclipIcon className="size-3.5" aria-label="含附件" />
+                            )}
+                            {unread && (
+                              <span className="size-1.5 rounded-full bg-accent" aria-label="未读" />
+                            )}
+                          </span>
+                          <span className="w-16 shrink-0 truncate text-right text-xs text-muted sm:w-20">
+                            {when}
+                          </span>
+                        </button>
+                        {starBtn}
+                      </div>
+                    ) : (
+                      <div className={rowClass + " items-start rounded-2xl p-2.5"}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleSelect(m.id)}
+                          aria-label="选择邮件"
+                          className="mt-2 size-5 shrink-0 sm:size-4"
+                        />
+                        <button
+                          onClick={() => openItem(m, i)}
+                          className="flex min-w-0 flex-1 items-start gap-3 text-left"
+                        >
+                          <PersonAvatar
+                            url={avatarFor(whoEmail(m))}
+                            email={whoEmail(m)}
+                            seed={who}
+                            className="size-9 shrink-0"
+                          />
+                          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                            <span className="flex items-center justify-between gap-2">
+                              <span
+                                className={
+                                  "truncate text-sm leading-tight text-foreground " +
+                                  (unread ? "font-semibold" : "")
+                                }
+                              >
+                                {who}
+                              </span>
+                              <span className="flex shrink-0 items-center gap-1.5">
+                                <span className="whitespace-nowrap text-xs text-muted">{when}</span>
+                                {unread && <span className="size-1.5 rounded-full bg-accent" />}
+                              </span>
+                            </span>
+                            <span
+                              className={
+                                "truncate text-xs leading-tight " +
+                                (unread ? "font-medium text-foreground" : "text-muted")
+                              }
+                            >
+                              {subject}
+                            </span>
+                            {(m.hasAttachments || m.hasCalendarInvite) && (
+                              <span className="flex items-center gap-2 text-[11px] leading-tight text-muted">
+                                {m.hasCalendarInvite && (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-1.5 py-0.5 text-accent">
+                                    <CalendarIcon className="size-3" />
+                                    日程
+                                  </span>
+                                )}
+                                {m.hasAttachments && (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-surface-secondary px-1.5 py-0.5 text-muted">
+                                    <PaperclipIcon className="size-3" />
+                                    附件
+                                  </span>
+                                )}
+                              </span>
+                            )}
+                            <span className="truncate text-xs leading-tight text-muted">
+                              {m.snippet}
+                            </span>
+                          </span>
+                        </button>
+                        <span className="mt-1 shrink-0">{starBtn}</span>
+                      </div>
+                    )}
                   </li>
                 );
               })}
@@ -1019,11 +1041,17 @@ export function Mailbox() {
       {/* 阅读 / 写信 */}
       <div
         className={
-          (readerOpen ? "flex " : "hidden ") + "min-w-0 flex-1 flex-col sm:flex"
+          (isSingleList
+            ? readerOpen
+              ? "flex "
+              : "hidden "
+            : readerOpen
+              ? "flex "
+              : "hidden sm:flex ") + "min-w-0 flex-1 flex-col"
         }
       >
-        {readerOpen && (
-          <div className="safe-top flex shrink-0 items-center gap-2 border-b border-border p-2 sm:hidden">
+        {readerOpen && (isMobile || isSingleList) && (
+          <div className="safe-top flex shrink-0 items-center gap-2 border-b border-border p-2">
             <Button size="sm" variant="ghost" className="touch-target" onClick={backToList}>
               <ArrowLeftIcon className="size-5" />
               返回
