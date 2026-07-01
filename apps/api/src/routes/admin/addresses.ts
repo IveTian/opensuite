@@ -1,8 +1,8 @@
 import { zValidator } from "@hono/zod-validator";
 import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
-import { domains, emailAddresses, user, userQuota } from "@mailflare/db";
-import { createAddressSchema } from "@mailflare/shared";
+import { domains, emailAddresses, mailboxMembers, user, userQuota } from "@mailflare/db";
+import { addMailboxMemberSchema, createAddressSchema } from "@mailflare/shared";
 import { z } from "zod";
 import type { AppEnv } from "../../env.js";
 import { audit } from "../../lib/audit.js";
@@ -75,10 +75,13 @@ export const addressRoutes = new Hono<AppEnv>()
       const target = await db.query.emailAddresses.findFirst({
         where: eq(emailAddresses.id, targetAddressId),
       });
-      if (!target || target.type !== "mailbox") {
+      if (!target || (target.type !== "mailbox" && target.type !== "shared")) {
         return c.json({ error: "目标地址无效（需为 mailbox）" }, 422);
       }
       ownerId = target.userId;
+    } else if (type === "shared") {
+      // 公共邮箱：无单一归属，访问权限走 mailbox_members
+      ownerId = null;
     }
 
     const address = `${localPart}@${domain.name}`;
@@ -109,6 +112,55 @@ export const addressRoutes = new Hono<AppEnv>()
       .returning();
     await audit(db, c.var.user!.id, "address.create", "address", row!.id, { address, type });
     return c.json(row, 201);
+  })
+
+  /** 公共邮箱成员：列出可访问用户 */
+  .get("/:id/members", async (c) => {
+    const db = c.var.db;
+    const rows = await db
+      .select({
+        userId: mailboxMembers.userId,
+        email: user.email,
+        name: user.name,
+        canSend: mailboxMembers.canSend,
+      })
+      .from(mailboxMembers)
+      .innerJoin(user, eq(mailboxMembers.userId, user.id))
+      .where(eq(mailboxMembers.addressId, c.req.param("id")))
+      .orderBy(user.email);
+    return c.json(rows);
+  })
+
+  /** 公共邮箱成员：授权用户可访问 */
+  .post("/:id/members", zValidator("json", addMailboxMemberSchema), async (c) => {
+    const db = c.var.db;
+    const id = c.req.param("id");
+    const { userId, canSend } = c.req.valid("json");
+    const addr = await db.query.emailAddresses.findFirst({
+      where: eq(emailAddresses.id, id),
+    });
+    if (!addr) return c.json({ error: "地址不存在" }, 404);
+    if (addr.type !== "shared") return c.json({ error: "仅公共邮箱可添加成员" }, 422);
+    const target = await db.query.user.findFirst({ where: eq(user.id, userId) });
+    if (!target) return c.json({ error: "用户不存在" }, 404);
+    await db
+      .insert(mailboxMembers)
+      .values({ addressId: id, userId, canSend: canSend ?? true })
+      .onConflictDoNothing({ target: [mailboxMembers.addressId, mailboxMembers.userId] });
+    await audit(db, c.var.user!.id, "mailbox.member.add", "address", id, { userId });
+    return c.json({ ok: true }, 201);
+  })
+
+  /** 公共邮箱成员：移除授权 */
+  .delete("/:id/members/:userId", async (c) => {
+    const db = c.var.db;
+    const id = c.req.param("id");
+    const userId = c.req.param("userId");
+    await db
+      .delete(mailboxMembers)
+      .where(and(eq(mailboxMembers.addressId, id), eq(mailboxMembers.userId, userId)));
+    await audit(db, c.var.user!.id, "mailbox.member.remove", "address", id, { userId });
+    return c.json({ ok: true });
   })
 
   /** 修改地址（状态/主地址） */

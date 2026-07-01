@@ -16,9 +16,10 @@ export async function resolveDelivery(
   const addr = await db.query.emailAddresses.findFirst({
     where: and(eq(emailAddresses.address, to), eq(emailAddresses.status, "active")),
   });
+  const isMailbox = (t: string) => t === "mailbox" || t === "shared";
   const toMailbox = async (a: EmailAddress | undefined): Promise<EmailAddress | null> => {
     if (!a) return null;
-    if (a.type === "mailbox") return a;
+    if (isMailbox(a.type)) return a;
     if (a.type === "alias" && a.targetAddressId) {
       const t = await db.query.emailAddresses.findFirst({
         where: and(
@@ -26,7 +27,7 @@ export async function resolveDelivery(
           eq(emailAddresses.status, "active"),
         ),
       });
-      return t?.type === "mailbox" ? t : null;
+      return t && isMailbox(t.type) ? t : null;
     }
     return null;
   };

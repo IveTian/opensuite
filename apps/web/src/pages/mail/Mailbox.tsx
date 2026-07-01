@@ -1,4 +1,4 @@
-import { Avatar, Button, Chip } from "@heroui/react";
+import { Button, Chip } from "@heroui/react";
 import {
   useEffect,
   useRef,
@@ -7,7 +7,7 @@ import {
   type MouseEvent,
 } from "react";
 import { useNavigate } from "react-router-dom";
-import type { BulkAction } from "@mailflare/shared";
+import type { BulkAction, MailboxAccount } from "@mailflare/shared";
 import {
   ArchiveIcon,
   ArrowLeftIcon,
@@ -37,15 +37,11 @@ import { formatBytes, formatDate } from "../../lib/format";
 import { useTheme } from "../../providers/theme";
 import { useBranding } from "../../providers/branding";
 import { BrandMark } from "../../components/BrandMark";
+import { Select } from "../../components/Select";
+import { PersonAvatar, useAvatars } from "../../components/PersonAvatar";
 import { Compose, type ComposeInitial } from "./Compose";
 import { MessageView, type MsgDetail } from "./MessageView";
 
-interface Addr {
-  id: string;
-  address: string;
-  type: string;
-  senderName: string | null;
-}
 interface MailSettings {
   signatureHtml: string | null;
   orgSignatureHtml: string | null;
@@ -65,6 +61,7 @@ interface MsgItem {
   sentAt: string | null;
   createdAt: string;
 }
+/** 各文件夹的「未读」计数（侧栏徽标只显示未读） */
 interface Counts {
   inbox: number;
   sent: number;
@@ -73,7 +70,6 @@ interface Counts {
   archive: number;
   starred: number;
   all: number;
-  unread: number;
 }
 interface Quota {
   usedBytes: number;
@@ -111,13 +107,6 @@ const SHORTCUTS: { keys: string; desc: string }[] = [
   { keys: "?", desc: "显示 / 隐藏快捷键" },
 ];
 
-function initials(value: string | null): string {
-  if (!value) return "?";
-  const local = value.includes("@") ? (value.split("@")[0] ?? value) : value;
-  const parts = local.replace(/[._-]+/g, " ").trim().split(/\s+/);
-  return ((parts[0]?.[0] ?? "?") + (parts[1]?.[0] ?? "")).toUpperCase();
-}
-
 /** 列表项主体展示名：出站看收件人，入站看发件人显示名 */
 function displayWho(m: MsgItem): string {
   if (m.direction === "outbound") {
@@ -126,15 +115,32 @@ function displayWho(m: MsgItem): string {
   return m.fromName || m.fromAddress || "(未知发件人)";
 }
 
+/** 该项用于头像目录解析的对方邮箱：出站取收件人，入站取发件人 */
+function whoEmail(m: MsgItem): string | null {
+  return m.direction === "outbound" ? (m.toAddresses?.[0] ?? null) : m.fromAddress;
+}
+
 export function Mailbox() {
   const { theme, toggle } = useTheme();
   const brand = useBranding();
   const navigate = useNavigate();
-  const { data: addresses } = useFetch<Addr[]>("/api/me/addresses");
+  const { data: accounts } = useFetch<MailboxAccount[]>("/api/me/accounts");
   const { data: mailSettings } = useFetch<MailSettings>("/api/me/mail-settings");
   const { data: quota } = useFetch<Quota | null>("/api/me/quota");
+
+  // 当前选中的邮箱账号（个人或公共），所有视图按其作用域取数
+  const [accountId, setAccountId] = useState<string>("");
+  useEffect(() => {
+    const list = accounts ?? [];
+    if (!list.length) return;
+    if (!accountId || !list.some((a) => a.id === accountId)) {
+      setAccountId((list.find((a) => a.isPrimary) ?? list[0]!).id);
+    }
+  }, [accounts, accountId]);
+  const acctParam = accountId ? `&addressId=${accountId}` : "";
+
   const { data: counts, refetch: refetchCounts } = useFetch<Counts>(
-    "/api/me/messages/counts",
+    `/api/me/messages/counts${accountId ? `?addressId=${accountId}` : ""}`,
   );
 
   const [folder, setFolder] = useState<string>("inbox");
@@ -146,7 +152,7 @@ export function Mailbox() {
     loading,
     refetch: refetchList,
   } = useFetch<{ items: MsgItem[]; total: number }>(
-    `/api/me/messages?folder=${folder}&q=${encodeURIComponent(q)}&limit=${LIMIT}&offset=${page * LIMIT}`,
+    `/api/me/messages?folder=${folder}&q=${encodeURIComponent(q)}&limit=${LIMIT}&offset=${page * LIMIT}${acctParam}`,
   );
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -161,8 +167,11 @@ export function Mailbox() {
   const searchRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  const mailboxes = (addresses ?? []).filter((a) => a.type === "mailbox");
+  const accountList = accounts ?? [];
+  const currentAccount = accountList.find((a) => a.id === accountId);
+  const sendable = accountList.filter((a) => a.canSend);
   const items = listData?.items ?? [];
+  const avatarFor = useAvatars(items.map(whoEmail));
   const total = listData?.total ?? 0;
   const currentFolder = FOLDERS.find((f) => f.key === folder);
   const readerOpen = Boolean(selectedId || composing);
@@ -186,6 +195,16 @@ export function Mailbox() {
   }
   function switchFolder(f: string) {
     setFolder(f);
+    setPage(0);
+    setSelectedId(null);
+    setComposing(false);
+    setSelected(new Set());
+    setCursor(0);
+  }
+  /** 切换当前邮箱账号：重置到收件箱与列表 */
+  function switchAccount(id: string) {
+    setAccountId(id);
+    setFolder("inbox");
     setPage(0);
     setSelectedId(null);
     setComposing(false);
@@ -268,7 +287,9 @@ export function Mailbox() {
   }
 
   function newCompose() {
-    startCompose({ fromAddressId: mailboxes[0]?.id });
+    // 默认从当前账号发信（不可发则退回首个可发账号）
+    const from = currentAccount?.canSend ? currentAccount.id : sendable[0]?.id;
+    startCompose({ fromAddressId: from });
   }
   function reply(m: MsgDetail) {
     const date = formatDate(m.receivedAt ?? m.sentAt ?? m.createdAt);
@@ -302,7 +323,7 @@ export function Mailbox() {
   }
 
   async function simulate() {
-    const addr = mailboxes[0];
+    const addr = currentAccount ?? accountList[0];
     if (!addr) return alert("你还没有邮箱地址");
     setSimBusy(true);
     const raw = [
@@ -423,7 +444,7 @@ export function Mailbox() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, cursor, selected, selectedId, showHelp, folder, mailboxes, composing]);
+  }, [items, cursor, selected, selectedId, showHelp, folder, currentAccount, composing]);
 
   const usedPct =
     quota && quota.storageQuotaBytes
@@ -439,6 +460,21 @@ export function Mailbox() {
           <span className="text-base font-semibold text-foreground">{brand.siteName}</span>
         </div>
 
+        {/* 账号切换器：个人邮箱 + 被授权的公共邮箱 */}
+        {accountList.length > 1 && (
+          <div className="px-1 pb-1 pt-2">
+            <Select
+              ariaLabel="切换邮箱账号"
+              value={accountId}
+              onChange={switchAccount}
+              options={accountList.map((a) => ({
+                value: a.id,
+                label: a.kind === "shared" ? `${a.address}（公共）` : a.address,
+              }))}
+            />
+          </div>
+        )}
+
         <div className="px-1 py-2">
           <Button variant="primary" fullWidth onClick={newCompose}>
             <PencilIcon className="size-4" />
@@ -448,11 +484,7 @@ export function Mailbox() {
 
         <nav className="flex flex-1 flex-col gap-0.5">
           {FOLDERS.map((f) => {
-            const n = !counts
-              ? 0
-              : f.key === "inbox"
-                ? counts.unread
-                : counts[f.key as keyof Counts];
+            const n = counts ? counts[f.key as keyof Counts] : 0;
             const active = folder === f.key;
             const Ico = f.icon;
             return (
@@ -685,9 +717,12 @@ export function Mailbox() {
                         onClick={() => openItem(m, i)}
                         className="flex min-w-0 flex-1 items-start gap-3 text-left"
                       >
-                        <Avatar className="size-9 shrink-0">
-                          <Avatar.Fallback>{initials(who)}</Avatar.Fallback>
-                        </Avatar>
+                        <PersonAvatar
+                          url={avatarFor(whoEmail(m))}
+                          email={whoEmail(m)}
+                          seed={who}
+                          className="size-9 shrink-0"
+                        />
                         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                           <span className="flex items-center justify-between gap-2">
                             <span
@@ -781,7 +816,7 @@ export function Mailbox() {
           {composing ? (
             <Compose
               key={composeKey}
-              addresses={mailboxes}
+              addresses={sendable}
               initial={composeInitial}
               signatureHtml={signature}
               onClose={() => {

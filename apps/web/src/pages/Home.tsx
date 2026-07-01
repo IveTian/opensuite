@@ -1,9 +1,13 @@
-import { Button, Input, Label, TextField } from "@heroui/react";
-import { Avatar } from "@heroui/react";
+import { Button, Input, Label, Switch, TextField } from "@heroui/react";
 import { Suspense, lazy, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Alert, Badge, Panel, Table, type Column } from "../components/ui";
-import { LogOutIcon, MailIcon, ShieldIcon } from "../components/icons";
+import { LogOutIcon, MailIcon, PencilIcon, ShieldIcon } from "../components/icons";
+import {
+  PersonAvatar,
+  setGravatarEnabled,
+  useGravatarEnabled,
+} from "../components/PersonAvatar";
 import { useFetch } from "../hooks/useFetch";
 import { api, ApiError } from "../lib/api";
 import { formatBytes } from "../lib/format";
@@ -119,13 +123,6 @@ function PersonalSignature({ initial, onSaved }: { initial: string; onSaved: () 
   );
 }
 
-function initials(value?: string | null): string {
-  if (!value) return "?";
-  const local = value.split("@")[0] ?? value;
-  const parts = local.replace(/[._-]+/g, " ").trim().split(/\s+/);
-  return ((parts[0]?.[0] ?? "?") + (parts[1]?.[0] ?? "")).toUpperCase();
-}
-
 export function Home() {
   const { data: session } = useSession();
   const { data: quota } = useFetch<MyQuota | null>("/api/me/quota");
@@ -135,6 +132,44 @@ export function Home() {
   const navigate = useNavigate();
   const role = (session?.user as { role?: string } | undefined)?.role;
   const mailboxes = (addresses ?? []).filter((a) => a.type === "mailbox");
+
+  // 头像：undefined=沿用会话头像，null=已移除，string=刚上传
+  const sessionImage = (session?.user as { image?: string | null } | undefined)?.image ?? null;
+  const [avatar, setAvatar] = useState<string | null | undefined>(undefined);
+  const shownAvatar = avatar === undefined ? sessionImage : avatar;
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const gravatarEnabled = useGravatarEnabled();
+
+  async function onAvatarFile(file?: File) {
+    if (!file) return;
+    if (file.size > 200 * 1024) {
+      alert("图片过大，请使用 ≤ 200KB 的图片");
+      return;
+    }
+    setAvatarBusy(true);
+    try {
+      const dataUrl = await new Promise<string>((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(r.result as string);
+        r.onerror = rej;
+        r.readAsDataURL(file);
+      });
+      const imageBase64 = dataUrl.split(",")[1] ?? "";
+      const out = await api.put<{ image: string }>("/api/me/avatar", {
+        contentType: file.type,
+        imageBase64,
+      });
+      setAvatar(out.image);
+    } catch (e) {
+      alert(e instanceof ApiError ? e.message : "上传失败");
+    } finally {
+      setAvatarBusy(false);
+    }
+  }
+  async function removeAvatar() {
+    await api.del("/api/me/avatar");
+    setAvatar(null);
+  }
 
   const usedPct =
     quota && quota.storageQuotaBytes
@@ -166,14 +201,44 @@ export function Home() {
     <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <Avatar className="size-11 shrink-0">
-            <Avatar.Fallback>{initials(session?.user.email)}</Avatar.Fallback>
-          </Avatar>
+          <label
+            className="relative cursor-pointer"
+            title="点击更换头像"
+            aria-label="更换头像"
+          >
+            <PersonAvatar
+              url={shownAvatar}
+              email={avatar === null ? undefined : session?.user.email}
+              seed={session?.user.email}
+              className="size-11 shrink-0"
+            />
+            <span className="absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full bg-accent text-accent-foreground shadow-surface">
+              <PencilIcon className="size-3" />
+            </span>
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => onAvatarFile(e.target.files?.[0])}
+            />
+          </label>
           <div>
             <h1 className="text-xl font-semibold text-foreground">
               你好，{session?.user.name}
             </h1>
             <p className="text-sm text-muted">{session?.user.email}</p>
+            {avatarBusy ? (
+              <p className="text-xs text-muted">头像上传中…</p>
+            ) : (
+              shownAvatar && (
+                <button
+                  onClick={removeAvatar}
+                  className="text-xs text-muted hover:text-danger"
+                >
+                  移除头像
+                </button>
+              )
+            )}
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -276,6 +341,22 @@ export function Home() {
             />
           </div>
         )}
+      </Panel>
+
+      {/* 头像隐私：Gravatar 开关 */}
+      <Panel className="mb-5">
+        <div className="flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-foreground">
+              用 Gravatar 显示外部头像
+            </h2>
+            <p className="mt-1 text-xs text-muted">
+              开启后会按对方邮箱向 gravatar.com 查询头像（会把联系人邮箱的哈希发给第三方）。
+              本系统内部用户仍优先用其上传的头像；此开关仅本设备生效。
+            </p>
+          </div>
+          <Switch isSelected={gravatarEnabled} onChange={setGravatarEnabled} />
+        </div>
       </Panel>
     </div>
   );

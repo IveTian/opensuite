@@ -81,6 +81,13 @@ export const createAddressSchema = z.object({
 });
 export type CreateAddressInput = z.infer<typeof createAddressSchema>;
 
+/** 公共邮箱：添加可访问成员 */
+export const addMailboxMemberSchema = z.object({
+  userId: z.string().min(1),
+  canSend: z.boolean().optional(),
+});
+export type AddMailboxMemberInput = z.infer<typeof addMailboxMemberSchema>;
+
 // ----------------------- 套餐 / 配额 -----------------------
 
 export const createPlanSchema = z.object({
@@ -146,6 +153,21 @@ export const updateMailSettingsSchema = z.object({
   signatureHtml: signatureHtml,
 });
 export type UpdateMailSettingsInput = z.infer<typeof updateMailSettingsSchema>;
+
+/** 头像上传（base64，约 200KB 上限） */
+export const updateAvatarSchema = z.object({
+  contentType: z
+    .string()
+    .regex(/^image\/(png|jpe?g|gif|webp|svg\+xml)$/i, "仅支持常见图片格式"),
+  imageBase64: z.string().min(1).max(280000),
+});
+export type UpdateAvatarInput = z.infer<typeof updateAvatarSchema>;
+
+/** 按邮箱地址批量解析头像（目录查询，同 Google 域内做法） */
+export const resolveAvatarsSchema = z.object({
+  emails: z.array(z.string().trim().toLowerCase().max(320)).min(1).max(100),
+});
+export type ResolveAvatarsInput = z.infer<typeof resolveAvatarsSchema>;
 
 /** 自定义某个邮箱地址的发信人显示名（空串视为清除） */
 export const updateSenderNameSchema = z.object({

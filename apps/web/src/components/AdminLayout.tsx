@@ -1,10 +1,11 @@
-import { Avatar, Button } from "@heroui/react";
+import { Button } from "@heroui/react";
 import { useState, type ComponentType } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { signOut, useSession } from "../lib/auth-client";
 import { useTheme } from "../providers/theme";
 import { useBranding } from "../providers/branding";
 import { BrandMark } from "./BrandMark";
+import { PersonAvatar } from "./PersonAvatar";
 import {
   AtSignIcon,
   CreditCardIcon,
@@ -37,13 +38,6 @@ const NAV: {
   { to: "/admin/settings", label: "注册策略", icon: SlidersIcon },
   { to: "/admin/audit", label: "审计日志", icon: ScrollIcon },
 ];
-
-function initials(value?: string | null): string {
-  if (!value) return "?";
-  const local = value.split("@")[0] ?? value;
-  const parts = local.replace(/[._-]+/g, " ").trim().split(/\s+/);
-  return ((parts[0]?.[0] ?? "?") + (parts[1]?.[0] ?? "")).toUpperCase();
-}
 
 export function AdminLayout() {
   const { theme, toggle } = useTheme();
@@ -112,9 +106,12 @@ export function AdminLayout() {
       </button>
 
       <div className="mt-3 flex items-center gap-2 rounded-xl bg-surface-secondary p-2">
-        <Avatar className="size-8 shrink-0">
-          <Avatar.Fallback>{initials(session?.user.email)}</Avatar.Fallback>
-        </Avatar>
+        <PersonAvatar
+          url={(session?.user as { image?: string | null } | undefined)?.image}
+          email={session?.user.email}
+          seed={session?.user.email}
+          className="size-8 shrink-0"
+        />
         <div className="flex min-w-0 flex-1 flex-col">
           <span className="truncate text-sm font-medium text-foreground">
             {session?.user.name}

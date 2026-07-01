@@ -75,6 +75,28 @@ export const emailAddresses = pgTable(
   ],
 );
 
+// ============ mailbox_members 公共邮箱成员（实装）============
+// 公共/共享邮箱（email_addresses.type = "shared"，userId 为空）通过此表授权用户访问。
+export const mailboxMembers = pgTable(
+  "mailbox_members",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    addressId: uuid("address_id")
+      .notNull()
+      .references(() => emailAddresses.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    // 是否可从该共享邮箱发信（默认可读可发）
+    canSend: boolean("can_send").notNull().default(true),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("mailbox_members_addr_user_uniq").on(t.addressId, t.userId),
+    index("mailbox_members_user_idx").on(t.userId),
+  ],
+);
+
 // ============ plans 配额套餐（实装，轻量）============
 export const plans = pgTable("plans", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -250,5 +272,6 @@ export type UserQuota = typeof userQuota.$inferSelect;
 export type InviteCode = typeof inviteCodes.$inferSelect;
 export type SystemSettings = typeof systemSettings.$inferSelect;
 export type UserSettings = typeof userSettings.$inferSelect;
+export type MailboxMember = typeof mailboxMembers.$inferSelect;
 export type Message = typeof messages.$inferSelect;
 export type Attachment = typeof attachments.$inferSelect;

@@ -1,7 +1,8 @@
-/** R2 对象 key 规则（原始 MIME 与附件） */
+/** R2 对象 key 规则（原始 MIME / 附件 / 头像） */
 export const rawKey = (messageId: string) => `raw/${messageId}.eml`;
 export const attachmentKey = (messageId: string, attachmentId: string) =>
   `att/${messageId}/${attachmentId}`;
+export const avatarKey = (userId: string) => `avatars/${userId}`;
 
 /** 把 postal-mime 的附件内容归一化为可写入 R2 的字节 */
 export function toBytes(content: ArrayBuffer | Uint8Array | string): Uint8Array {

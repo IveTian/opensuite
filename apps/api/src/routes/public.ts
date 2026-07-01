@@ -22,6 +22,7 @@ import {
 } from "@mailflare/shared";
 import type { AppEnv } from "../env.js";
 import type { Database } from "@mailflare/db";
+import { avatarKey } from "../lib/storage.js";
 
 /** 回滚一次邀请码占用（注册失败时） */
 async function rollbackInvite(db: Database, inviteId: string) {
@@ -35,6 +36,18 @@ async function rollbackInvite(db: Database, inviteId: string) {
 }
 
 export const publicRoutes = new Hono<AppEnv>()
+  /** 头像服务（公开，供 <img> 直接加载；低敏感，按 userId 取 R2 对象） */
+  .get("/avatars/:userId", async (c) => {
+    const obj = await c.env.RAW_EMAILS.get(avatarKey(c.req.param("userId")));
+    if (!obj) return c.json({ error: "无头像" }, 404);
+    return new Response(obj.body, {
+      headers: {
+        "Content-Type": obj.httpMetadata?.contentType ?? "image/png",
+        "Cache-Control": "public, max-age=86400",
+      },
+    });
+  })
+
   /** 站点品牌（公开，未登录页也可读） */
   .get("/branding", async (c) => {
     const settings = await c.var.db.query.systemSettings.findFirst({

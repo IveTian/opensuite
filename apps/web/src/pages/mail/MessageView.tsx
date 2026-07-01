@@ -2,6 +2,7 @@ import { Button } from "@heroui/react";
 import DOMPurify from "dompurify";
 import { useEffect, useRef, useState } from "react";
 import { Badge } from "../../components/ui";
+import { PersonAvatar, useAvatars } from "../../components/PersonAvatar";
 import {
   ArchiveIcon,
   ForwardIcon,
@@ -221,6 +222,7 @@ export function MessageView({
 }) {
   const { data: m, refetch } = useFetch<MsgDetail>(`/api/me/messages/${messageId}`);
   const { data: thread } = useFetch<ThreadItem[]>(`/api/me/messages/${messageId}/thread`);
+  const avatarFor = useAvatars(m ? [m.fromAddress] : []);
 
   if (!m) return <p className="text-sm text-muted">加载中…</p>;
 
@@ -287,23 +289,31 @@ export function MessageView({
         </div>
       </div>
 
-      <div className="mb-4 space-y-0.5 text-sm text-muted">
-        <div>
-          <span className="text-foreground">发件人：</span>
-          {m.fromName ? (
-            <>
-              {m.fromName} <span className="text-muted">&lt;{m.fromAddress}&gt;</span>
-            </>
-          ) : (
-            m.fromAddress
-          )}
-        </div>
-        <div>
-          <span className="text-foreground">收件人：</span>
-          {(m.toAddresses ?? []).join(", ")}
-        </div>
-        <div className="tabular-nums">
-          {formatDate(m.receivedAt ?? m.sentAt ?? m.createdAt)} · {formatBytes(m.sizeBytes)}
+      <div className="mb-4 flex items-start gap-3">
+        <PersonAvatar
+          url={avatarFor(m.fromAddress)}
+          email={m.fromAddress}
+          seed={m.fromName || m.fromAddress}
+          className="size-10 shrink-0"
+        />
+        <div className="min-w-0 space-y-0.5 text-sm text-muted">
+          <div>
+            <span className="text-foreground">发件人：</span>
+            {m.fromName ? (
+              <>
+                {m.fromName} <span className="text-muted">&lt;{m.fromAddress}&gt;</span>
+              </>
+            ) : (
+              m.fromAddress
+            )}
+          </div>
+          <div>
+            <span className="text-foreground">收件人：</span>
+            {(m.toAddresses ?? []).join(", ")}
+          </div>
+          <div className="tabular-nums">
+            {formatDate(m.receivedAt ?? m.sentAt ?? m.createdAt)} · {formatBytes(m.sizeBytes)}
+          </div>
         </div>
       </div>
 

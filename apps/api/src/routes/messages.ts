@@ -2,7 +2,7 @@ import { zValidator } from "@hono/zod-validator";
 import { and, asc, desc, eq, ilike, inArray, ne, notInArray, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import PostalMime from "postal-mime";
-import { attachments, emailAddresses, messages, userQuota } from "@mailflare/db";
+import { attachments, emailAddresses, mailboxMembers, messages, userQuota } from "@mailflare/db";
 import type { Database } from "@mailflare/db";
 import {
   bulkActionSchema,
@@ -16,22 +16,44 @@ import { makeSnippet, resolveDelivery, storeInboundEmail } from "../lib/mail.js"
 import { sanitizeOutboundHtml } from "../lib/sanitize.js";
 import { attachmentKey, base64ToBytes, rawKey } from "../lib/storage.js";
 
-/** 当前用户名下全部地址 id */
-async function userAddressIds(db: Database, userId: string): Promise<string[]> {
-  const rows = await db
-    .select({ id: emailAddresses.id })
-    .from(emailAddresses)
-    .where(eq(emailAddresses.userId, userId));
-  return rows.map((r) => r.id);
+/**
+ * 用户可访问的全部地址 id：自有地址（含别名）+ 被授权的公共邮箱。
+ * 邮件读取/操作的授权边界。
+ */
+async function accessibleAddressIds(db: Database, userId: string): Promise<string[]> {
+  const [owned, shared] = await Promise.all([
+    db.select({ id: emailAddresses.id }).from(emailAddresses).where(eq(emailAddresses.userId, userId)),
+    db
+      .select({ id: mailboxMembers.addressId })
+      .from(mailboxMembers)
+      .where(eq(mailboxMembers.userId, userId)),
+  ]);
+  return [...new Set([...owned.map((r) => r.id), ...shared.map((r) => r.id)])];
 }
 
-/** 校验某条邮件归属当前用户，返回邮件行 + 归属地址 */
-async function ownedMessage(db: Database, userId: string, id: string) {
+/**
+ * 作用域地址集：指定 addressId 且可访问时锁定到该账号，否则为全部可访问地址。
+ * 返回 null 表示请求了无权访问的地址（应视为空结果）。
+ */
+async function scopeIds(
+  db: Database,
+  userId: string,
+  addressId?: string,
+): Promise<string[] | null> {
+  const all = await accessibleAddressIds(db, userId);
+  if (addressId) return all.includes(addressId) ? [addressId] : null;
+  return all;
+}
+
+/** 校验某条邮件当前用户可访问，返回邮件行 + 归属地址 */
+async function accessibleMessage(db: Database, userId: string, id: string) {
+  const ids = await accessibleAddressIds(db, userId);
+  if (!ids.length) return null;
   const [row] = await db
     .select({ m: messages, address: emailAddresses.address })
     .from(messages)
     .innerJoin(emailAddresses, eq(messages.addressId, emailAddresses.id))
-    .where(and(eq(messages.id, id), eq(emailAddresses.userId, userId)));
+    .where(and(eq(messages.id, id), inArray(messages.addressId, ids)));
   return row ?? null;
 }
 
@@ -72,8 +94,8 @@ export const messageRoutes = new Hono<AppEnv>()
     const limit = Math.min(Number(c.req.query("limit") ?? 50), 100);
     const offset = Math.max(Number(c.req.query("offset") ?? 0), 0);
 
-    const ids = await userAddressIds(db, user.id);
-    if (!ids.length) return c.json({ items: [], total: 0 });
+    const ids = await scopeIds(db, user.id, addressId);
+    if (!ids?.length) return c.json({ items: [], total: 0 });
 
     const conds = [inArray(messages.addressId, ids)];
     if (folder === "starred") {
@@ -84,7 +106,6 @@ export const messageRoutes = new Hono<AppEnv>()
     } else {
       conds.push(eq(messages.folder, folder));
     }
-    if (addressId) conds.push(eq(messages.addressId, addressId));
     if (q) {
       const like = `%${q}%`;
       conds.push(
@@ -110,26 +131,16 @@ export const messageRoutes = new Hono<AppEnv>()
     return c.json({ items, total: totalRow[0]?.n ?? 0 });
   })
 
-  /** 各文件夹计数 + 未读 */
+  /** 各文件夹「未读」计数（按选中账号作用域）；侧栏只显示未读，不显示全部数量 */
   .get("/counts", async (c) => {
     const db = c.var.db;
-    const ids = await userAddressIds(db, c.var.user!.id);
-    const empty = {
-      inbox: 0,
-      sent: 0,
-      draft: 0,
-      trash: 0,
-      archive: 0,
-      starred: 0,
-      all: 0,
-      unread: 0,
-    };
-    if (!ids.length) return c.json(empty);
+    const ids = await scopeIds(db, c.var.user!.id, c.req.query("addressId"));
+    const empty = { inbox: 0, sent: 0, draft: 0, trash: 0, archive: 0, starred: 0, all: 0 };
+    if (!ids?.length) return c.json(empty);
 
     const rows = await db
       .select({
         folder: messages.folder,
-        total: sql<number>`count(*)::int`,
         unread: sql<number>`sum(case when ${messages.isRead} = false then 1 else 0 end)::int`,
       })
       .from(messages)
@@ -138,16 +149,17 @@ export const messageRoutes = new Hono<AppEnv>()
 
     const out = { ...empty };
     for (const r of rows) {
-      if (r.folder in out) (out as Record<string, number>)[r.folder] = r.total;
-      if (r.folder === "inbox") out.unread = r.unread;
-      // 「全部邮件」：除回收站与草稿外全部累加
-      if (r.folder !== "trash" && r.folder !== "draft") out.all += r.total;
+      if (r.folder in out) (out as Record<string, number>)[r.folder] = r.unread ?? 0;
+      // 「全部邮件」：除回收站与草稿外的未读累加
+      if (r.folder !== "trash" && r.folder !== "draft") out.all += r.unread ?? 0;
     }
+    // 星标未读（排除回收站）
     out.starred = await db.$count(
       messages,
       and(
         inArray(messages.addressId, ids),
         eq(messages.isStarred, true),
+        eq(messages.isRead, false),
         ne(messages.folder, "trash"),
       ),
     );
@@ -157,7 +169,7 @@ export const messageRoutes = new Hono<AppEnv>()
   /** 批量操作：勾选多封后一次性归档/删除/移回收件箱/标记（仅限本人邮件） */
   .post("/bulk", zValidator("json", bulkActionSchema), async (c) => {
     const db = c.var.db;
-    const ids = await userAddressIds(db, c.var.user!.id);
+    const ids = await accessibleAddressIds(db, c.var.user!.id);
     if (!ids.length) return c.json({ ok: true, affected: 0 });
     const { ids: msgIds, action } = c.req.valid("json");
 
@@ -198,7 +210,7 @@ export const messageRoutes = new Hono<AppEnv>()
   /** 导出邮箱为 .mbox（收件箱 + 已发） */
   .get("/export", async (c) => {
     const db = c.var.db;
-    const ids = await userAddressIds(db, c.var.user!.id);
+    const ids = await accessibleAddressIds(db, c.var.user!.id);
     if (!ids.length) {
       return new Response("", { headers: { "Content-Type": "application/mbox" } });
     }
@@ -252,11 +264,12 @@ export const messageRoutes = new Hono<AppEnv>()
     const from = await db.query.emailAddresses.findFirst({
       where: and(
         eq(emailAddresses.id, body.fromAddressId),
-        eq(emailAddresses.userId, user.id),
         eq(emailAddresses.status, "active"),
       ),
     });
-    if (!from || from.type !== "mailbox") {
+    // 自有邮箱或被授权的公共邮箱均可发信
+    const sendable = await accessibleAddressIds(db, user.id);
+    if (!from || (from.type !== "mailbox" && from.type !== "shared") || !sendable.includes(from.id)) {
       return c.json({ error: "发件地址无效或不属于你" }, 422);
     }
     // 发信人显示名：地址自定义优先，回退用户昵称
@@ -273,7 +286,7 @@ export const messageRoutes = new Hono<AppEnv>()
     let inReplyTo: string | null = null;
     let references: string | null = null;
     if (body.replyToMessageId) {
-      const orig = await ownedMessage(db, user.id, body.replyToMessageId);
+      const orig = await accessibleMessage(db, user.id, body.replyToMessageId);
       if (orig?.m.messageId) {
         inReplyTo = orig.m.messageId;
         references = `${orig.m.references ? orig.m.references + " " : ""}${orig.m.messageId}`;
@@ -370,7 +383,7 @@ export const messageRoutes = new Hono<AppEnv>()
     }
     // 发送的是草稿 → 删除草稿
     if (body.draftId) {
-      const draft = await ownedMessage(db, user.id, body.draftId);
+      const draft = await accessibleMessage(db, user.id, body.draftId);
       if (draft?.m.folder === "draft") {
         await db.delete(messages).where(eq(messages.id, body.draftId));
       }
@@ -386,12 +399,10 @@ export const messageRoutes = new Hono<AppEnv>()
     if (b.html) b.html = sanitizeOutboundHtml(b.html);
 
     const from = await db.query.emailAddresses.findFirst({
-      where: and(
-        eq(emailAddresses.id, b.fromAddressId),
-        eq(emailAddresses.userId, user.id),
-      ),
+      where: eq(emailAddresses.id, b.fromAddressId),
     });
-    if (!from) return c.json({ error: "发件地址无效" }, 422);
+    const draftable = await accessibleAddressIds(db, user.id);
+    if (!from || !draftable.includes(from.id)) return c.json({ error: "发件地址无效" }, 422);
 
     const values = {
       addressId: from.id,
@@ -407,7 +418,7 @@ export const messageRoutes = new Hono<AppEnv>()
     };
 
     if (b.id) {
-      const row = await ownedMessage(db, user.id, b.id);
+      const row = await accessibleMessage(db, user.id, b.id);
       if (!row || row.m.folder !== "draft") return c.json({ error: "草稿不存在" }, 404);
       await db.update(messages).set(values).where(eq(messages.id, b.id));
       return c.json({ id: b.id });
@@ -425,19 +436,22 @@ export const messageRoutes = new Hono<AppEnv>()
     const user = c.var.user!;
     const { addressId, to, raw } = c.req.valid("json");
 
+    const accessible = await accessibleAddressIds(db, user.id);
     let envelopeTo = to;
     if (!envelopeTo && addressId) {
       const addr = await db.query.emailAddresses.findFirst({
-        where: and(eq(emailAddresses.id, addressId), eq(emailAddresses.userId, user.id)),
+        where: eq(emailAddresses.id, addressId),
       });
-      if (!addr) return c.json({ error: "地址无效或不属于你" }, 422);
+      if (!addr || !accessible.includes(addr.id)) {
+        return c.json({ error: "地址无效或不属于你" }, 422);
+      }
       envelopeTo = addr.address;
     }
     if (!envelopeTo) return c.json({ error: "缺少收件地址" }, 422);
 
-    // 解析投递目标，且必须属于当前用户（防止注入他人邮箱）
+    // 解析投递目标，且必须为当前用户可访问的地址（防止注入他人邮箱）
     const target = await resolveDelivery(db, envelopeTo.toLowerCase());
-    if (!target || target.userId !== user.id) {
+    if (!target || !accessible.includes(target.id)) {
       return c.json({ error: "投递目标不存在或不属于你" }, 422);
     }
 
@@ -455,7 +469,7 @@ export const messageRoutes = new Hono<AppEnv>()
   /** 邮件详情（含附件元数据） */
   .get("/:id", async (c) => {
     const db = c.var.db;
-    const row = await ownedMessage(db, c.var.user!.id, c.req.param("id"));
+    const row = await accessibleMessage(db, c.var.user!.id, c.req.param("id"));
     if (!row) return c.json({ error: "邮件不存在" }, 404);
     const atts = await db
       .select({
@@ -473,7 +487,7 @@ export const messageRoutes = new Hono<AppEnv>()
   /** 会话线程：同一对话内的邮件（按线程头聚合） */
   .get("/:id/thread", async (c) => {
     const db = c.var.db;
-    const row = await ownedMessage(db, c.var.user!.id, c.req.param("id"));
+    const row = await accessibleMessage(db, c.var.user!.id, c.req.param("id"));
     if (!row) return c.json({ error: "邮件不存在" }, 404);
     const m = row.m;
 
@@ -482,7 +496,7 @@ export const messageRoutes = new Hono<AppEnv>()
     if (m.inReplyTo) chain.add(m.inReplyTo);
     for (const r of (m.references ?? "").split(/\s+/).filter(Boolean)) chain.add(r);
 
-    const ids = await userAddressIds(db, c.var.user!.id);
+    const ids = await accessibleAddressIds(db, c.var.user!.id);
     const ors = [eq(messages.id, m.id)];
     if (chain.size) ors.push(inArray(messages.messageId, [...chain]));
     if (m.messageId) {
@@ -513,7 +527,7 @@ export const messageRoutes = new Hono<AppEnv>()
   /** 下载原始 .eml */
   .get("/:id/raw", async (c) => {
     const db = c.var.db;
-    const row = await ownedMessage(db, c.var.user!.id, c.req.param("id"));
+    const row = await accessibleMessage(db, c.var.user!.id, c.req.param("id"));
     if (!row?.m.r2ObjectKey) return c.json({ error: "原文不存在" }, 404);
     const obj = await c.env.RAW_EMAILS.get(row.m.r2ObjectKey);
     if (!obj) return c.json({ error: "原文不存在" }, 404);
@@ -528,7 +542,7 @@ export const messageRoutes = new Hono<AppEnv>()
   /** 下载附件 */
   .get("/:id/attachments/:attId", async (c) => {
     const db = c.var.db;
-    const row = await ownedMessage(db, c.var.user!.id, c.req.param("id"));
+    const row = await accessibleMessage(db, c.var.user!.id, c.req.param("id"));
     if (!row) return c.json({ error: "邮件不存在" }, 404);
     const att = await db.query.attachments.findFirst({
       where: and(
@@ -550,7 +564,7 @@ export const messageRoutes = new Hono<AppEnv>()
   /** 标记已读/星标/移动文件夹 */
   .patch("/:id", zValidator("json", updateMessageSchema), async (c) => {
     const db = c.var.db;
-    const row = await ownedMessage(db, c.var.user!.id, c.req.param("id"));
+    const row = await accessibleMessage(db, c.var.user!.id, c.req.param("id"));
     if (!row) return c.json({ error: "邮件不存在" }, 404);
     await db.update(messages).set(c.req.valid("json")).where(eq(messages.id, row.m.id));
     return c.json({ ok: true });
@@ -559,7 +573,7 @@ export const messageRoutes = new Hono<AppEnv>()
   /** 删除：非回收站→移入回收站；回收站内→永久删除并清理 R2 */
   .delete("/:id", async (c) => {
     const db = c.var.db;
-    const row = await ownedMessage(db, c.var.user!.id, c.req.param("id"));
+    const row = await accessibleMessage(db, c.var.user!.id, c.req.param("id"));
     if (!row) return c.json({ error: "邮件不存在" }, 404);
 
     if (row.m.folder !== "trash") {

@@ -25,6 +25,20 @@ export interface BrandingConfig {
   logoUrl: string | null;
 }
 
+/** 邮箱账号（侧栏切换器用）：个人邮箱 + 被授权的公共邮箱 */
+export interface MailboxAccount {
+  /** email_addresses.id */
+  id: string;
+  address: string;
+  /** personal=自有邮箱；shared=公共邮箱 */
+  kind: "personal" | "shared";
+  isPrimary: boolean;
+  /** 是否可从该账号发信 */
+  canSend: boolean;
+  /** 自定义发信人显示名 */
+  senderName: string | null;
+}
+
 /** 邀请码预校验结果 */
 export interface InviteValidationResult {
   valid: boolean;

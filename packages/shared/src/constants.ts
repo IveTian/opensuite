@@ -19,8 +19,8 @@ export type RegistrationMode = (typeof REGISTRATION_MODES)[number];
 export const DOMAIN_STATUSES = ["pending", "verifying", "active", "disabled"] as const;
 export type DomainStatus = (typeof DOMAIN_STATUSES)[number];
 
-/** 邮箱地址类型：真实邮箱 / 别名 / catch-all（后两者第一阶段仅预留） */
-export const ADDRESS_TYPES = ["mailbox", "alias", "catch_all"] as const;
+/** 邮箱地址类型：真实邮箱 / 别名 / catch-all / 公共共享邮箱 */
+export const ADDRESS_TYPES = ["mailbox", "alias", "catch_all", "shared"] as const;
 export type AddressType = (typeof ADDRESS_TYPES)[number];
 
 /** 邮箱地址状态 */
