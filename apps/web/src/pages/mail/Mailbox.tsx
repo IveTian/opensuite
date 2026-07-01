@@ -164,7 +164,8 @@ export function Mailbox() {
   const [simBusy, setSimBusy] = useState(false);
   // 批量勾选 + 键盘游标 + 快捷键帮助
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [cursor, setCursor] = useState(0);
+  // -1 = 无游标（未用键盘导航时不高亮任何项，避免顶部默认蓝圈）
+  const [cursor, setCursor] = useState(-1);
   const [showHelp, setShowHelp] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -201,7 +202,7 @@ export function Mailbox() {
     setSelectedId(null);
     setComposing(false);
     setSelected(new Set());
-    setCursor(0);
+    setCursor(-1);
   }
   /** 切换当前邮箱账号：重置到收件箱与列表 */
   function switchAccount(id: string) {
@@ -211,13 +212,13 @@ export function Mailbox() {
     setSelectedId(null);
     setComposing(false);
     setSelected(new Set());
-    setCursor(0);
+    setCursor(-1);
   }
   function applySearch() {
     setQ(qInput.trim());
     setPage(0);
     setSelectedId(null);
-    setCursor(0);
+    setCursor(-1);
   }
   function backToList() {
     setComposing(false);
@@ -354,7 +355,7 @@ export function Mailbox() {
 
   // 游标越界纠正 + 滚动到可视
   useEffect(() => {
-    if (cursor > items.length - 1) setCursor(items.length ? items.length - 1 : 0);
+    if (cursor > items.length - 1) setCursor(items.length ? items.length - 1 : -1);
   }, [items.length, cursor]);
   useEffect(() => {
     const el = listRef.current?.querySelector(`[data-idx="${cursor}"]`);
