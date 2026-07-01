@@ -15,7 +15,7 @@ import { useTheme } from "../providers/theme";
 import { useBranding } from "../providers/branding";
 import { signOut, useSession } from "../lib/auth-client";
 
-interface AppEntry {
+export interface AppEntry {
   key: string;
   name: string;
   to: string;
@@ -25,7 +25,8 @@ interface AppEntry {
   adminOnly?: boolean;
 }
 
-const APPS: AppEntry[] = [
+/** 全部应用（Launchpad 磁贴与顶部应用切换器共用同一份） */
+export const APPS: AppEntry[] = [
   {
     key: "mail",
     name: "邮箱",

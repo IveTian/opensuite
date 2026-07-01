@@ -47,7 +47,7 @@ import { buildForwardHtml, buildReplyHtml } from "../../lib/email-html";
 import { formatBytes, formatDate } from "../../lib/format";
 import { useTheme } from "../../providers/theme";
 import { useBranding } from "../../providers/branding";
-import { BrandMark } from "../../components/BrandMark";
+import { AppSwitcher } from "../../components/AppSwitcher";
 import { Select } from "../../components/Select";
 import { PersonAvatar, useAvatars } from "../../components/PersonAvatar";
 import { Compose, type ComposeInitial } from "./Compose";
@@ -533,9 +533,8 @@ export function Mailbox() {
     <div className="flex h-full bg-background">
       {/* 侧栏 */}
       <aside className="hidden w-60 shrink-0 flex-col border-r border-border p-3 sm:flex">
-        <div className="flex items-center gap-2 px-2 py-2">
-          <BrandMark boxClassName="size-7 rounded-lg" iconClassName="size-4" />
-          <span className="text-base font-semibold text-foreground">{brand.siteName}</span>
+        <div className="px-1 py-1">
+          <AppSwitcher current="mail" />
         </div>
 
         {/* 账号切换器：个人邮箱 + 被授权的公共邮箱 */}

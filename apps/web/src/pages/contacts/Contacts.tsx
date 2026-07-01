@@ -2,11 +2,10 @@ import { Button } from "@heroui/react";
 import { useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import type { DirectoryEntry, DirectoryPayload, PersonalContact } from "@mailflare/shared";
-import { BrandMark } from "../../components/BrandMark";
+import { AppSwitcher } from "../../components/AppSwitcher";
 import { PersonAvatar } from "../../components/PersonAvatar";
 import { Alert } from "../../components/ui";
 import {
-  DashboardIcon,
   MoonIcon,
   PlusIcon,
   SearchIcon,
@@ -18,7 +17,6 @@ import { useFetch } from "../../hooks/useFetch";
 import { api, ApiError } from "../../lib/api";
 import { useSession } from "../../lib/auth-client";
 import { useTheme } from "../../providers/theme";
-import { useBranding } from "../../providers/branding";
 import { ContactDetail, type ContactView } from "./ContactDetail";
 import { PersonalContactForm } from "./PersonalContactForm";
 
@@ -33,7 +31,6 @@ const NO_DEPT = "__none__";
 export function Contacts() {
   const navigate = useNavigate();
   const { theme, toggle } = useTheme();
-  const { siteName } = useBranding();
   const { data: session } = useSession();
   const image = (session?.user as { image?: string | null } | undefined)?.image ?? null;
 
@@ -145,16 +142,8 @@ export function Contacts() {
     <div className="flex h-full flex-col bg-background">
       {/* 顶栏 */}
       <header className="flex items-center justify-between border-b border-border px-4 py-3 sm:px-6">
-        <div className="flex items-center gap-2">
-          <BrandMark />
-          <span className="text-sm font-semibold text-foreground">{siteName}</span>
-          <span className="ml-1 text-sm text-muted">· 通讯录</span>
-        </div>
+        <AppSwitcher current="contacts" />
         <div className="flex items-center gap-1.5">
-          <Button variant="ghost" size="sm" onClick={() => navigate("/")}>
-            <DashboardIcon className="size-4" />
-            应用
-          </Button>
           <Button variant="ghost" isIconOnly aria-label="切换主题" onClick={toggle}>
             {theme === "dark" ? <MoonIcon className="size-4" /> : <SunIcon className="size-4" />}
           </Button>
