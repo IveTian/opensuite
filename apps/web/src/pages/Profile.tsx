@@ -222,14 +222,34 @@ export function Profile() {
   ];
 
   return (
-    <div className="flex h-full bg-background">
-      {/* 左侧栏：应用切换 + 分区导航 + 身份/退出 */}
-      <aside className="hidden w-60 shrink-0 flex-col border-r border-border p-3 sm:flex">
-        <div className="px-1 py-1">
-          <AppSwitcher current="profile" label="账户" />
+    <div className="flex h-full flex-col bg-background">
+      {/* 顶部全宽 Header（与邮箱/通讯录/后台一致） */}
+      <header className="flex shrink-0 items-center justify-between border-b border-border px-4 py-2.5 sm:px-6">
+        <AppSwitcher current="profile" label="账户" />
+        <div className="flex items-center gap-1.5">
+          <Button variant="ghost" isIconOnly aria-label="切换主题" onClick={toggle}>
+            {theme === "dark" ? <MoonIcon className="size-4" /> : <SunIcon className="size-4" />}
+          </Button>
+          <button
+            onClick={() => setSection("profile")}
+            className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-focus/60"
+            title="个人资料"
+            aria-label="个人资料"
+          >
+            <PersonAvatar
+              url={shownAvatar}
+              email={session?.user.email}
+              seed={session?.user.email}
+              className="size-8 shrink-0"
+            />
+          </button>
         </div>
+      </header>
 
-        <p className="px-3 pb-1 pt-4 text-xs font-medium text-muted">账户设置</p>
+      <div className="flex min-h-0 flex-1">
+        {/* 左侧分类栏 */}
+        <aside className="hidden w-60 shrink-0 flex-col border-r border-border p-3 sm:flex">
+          <p className="px-3 pb-1 pt-2 text-xs font-medium text-muted">账户设置</p>
         <nav className="flex flex-1 flex-col gap-0.5">
           {SECTIONS.map((s) => {
             const Ico = s.icon;
@@ -265,9 +285,6 @@ export function Profile() {
             </span>
             <span className="truncate text-xs text-muted">{session?.user.email}</span>
           </div>
-          <Button size="sm" variant="ghost" isIconOnly aria-label="切换主题" onClick={toggle}>
-            {theme === "dark" ? <MoonIcon className="size-4" /> : <SunIcon className="size-4" />}
-          </Button>
           <Button size="sm" variant="ghost" isIconOnly aria-label="退出登录" onClick={logout}>
             <LogOutIcon className="size-4" />
           </Button>
@@ -447,6 +464,7 @@ export function Profile() {
           )}
         </div>
       </main>
+      </div>
     </div>
   );
 }
