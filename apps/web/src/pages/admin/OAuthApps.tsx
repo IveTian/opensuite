@@ -1,4 +1,4 @@
-import { Button, Input, Label, Switch, TextField } from "@heroui/react";
+import { Button, Input, Label, TextField } from "@heroui/react";
 import { useState, type FormEvent } from "react";
 import { Alert, Badge, PageHeader, Panel, Table, type Column } from "../../components/ui";
 import { useFetch } from "../../hooks/useFetch";
@@ -239,7 +239,12 @@ export function OAuthApps() {
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
-              <Switch isSelected={showInLauncher} onChange={setShowInLauncher} />
+              <input
+                type="checkbox"
+                checked={showInLauncher}
+                onChange={(e) => setShowInLauncher(e.target.checked)}
+                className="size-4 accent-sky-600"
+              />
               在应用中心展示磁贴
             </label>
             {showInLauncher && (
