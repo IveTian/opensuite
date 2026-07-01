@@ -50,6 +50,15 @@ body {
 }
 
 @media (min-width: 640px) {
+  .safe-top {
+    padding-top: 0;
+  }
+
+  .safe-bottom,
+  .mobile-pad-bottom {
+    padding-bottom: 0;
+  }
+
   .mobile-pwa-prompt {
     bottom: 1rem;
   }
