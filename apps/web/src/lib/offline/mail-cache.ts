@@ -14,6 +14,9 @@ export interface CachedMsgItem {
   folder: string;
   receivedAt: string | null;
   sentAt: string | null;
+  scheduledAt: string | null;
+  sendStatus: string | null;
+  sendError: string | null;
   createdAt: string;
   hasAttachments?: boolean;
   hasCalendarInvite?: boolean;
@@ -36,6 +39,9 @@ export interface CachedMsgDetail {
   sizeBytes: number | null;
   receivedAt: string | null;
   sentAt: string | null;
+  scheduledAt: string | null;
+  sendStatus: string | null;
+  sendError: string | null;
   createdAt: string;
   attachments: {
     id: string;
@@ -152,6 +158,9 @@ function listItemToMinimalDetail(item: CachedMsgItem, addressId: string): Cached
     sizeBytes: null,
     receivedAt: item.receivedAt,
     sentAt: item.sentAt,
+    scheduledAt: item.scheduledAt,
+    sendStatus: item.sendStatus,
+    sendError: item.sendError,
     createdAt: item.createdAt,
     attachments: [],
   };

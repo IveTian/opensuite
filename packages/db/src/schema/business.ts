@@ -333,12 +333,17 @@ export const messages = pgTable(
     folder: text("folder").notNull().default("inbox"), // inbox/sent/trash...
     receivedAt: timestamp("received_at", { mode: "date" }),
     sentAt: timestamp("sent_at", { mode: "date" }),
+    scheduledAt: timestamp("scheduled_at", { withTimezone: true, mode: "date" }),
+    sendStatus: text("send_status"), // draft/scheduled/sending/sent/failed
+    sendError: text("send_error"),
+    sentByUserId: text("sent_by_user_id").references(() => user.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
   },
   (t) => [
     index("messages_address_idx").on(t.addressId),
     index("messages_message_id_idx").on(t.messageId),
     index("messages_folder_idx").on(t.addressId, t.folder),
+    index("messages_scheduled_idx").on(t.sendStatus, t.scheduledAt),
   ],
 );
 

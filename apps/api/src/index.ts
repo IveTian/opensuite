@@ -5,6 +5,7 @@ import { emailHandler } from "./email/handler.js";
 import type { AppEnv, Bindings } from "./env.js";
 import { runCalendarReminders } from "./lib/calendar-reminders.js";
 import { runDailyMaintenance } from "./lib/cron.js";
+import { runScheduledMail } from "./lib/outbound-mail.js";
 import { contextMiddleware } from "./middleware/context.js";
 import { adminRoutes } from "./routes/admin/index.js";
 import { calendarRoutes } from "./routes/calendar.js";
@@ -66,10 +67,12 @@ export default {
     const { db, client } = await createDb(env.HYPERDRIVE.connectionString);
     try {
       if (controller.cron === "*/5 * * * *") {
-        const r = await runCalendarReminders(db, env, new Date());
-        console.log("日历提醒扫描完成", r);
+        const now = new Date(controller.scheduledTime);
+        const reminders = await runCalendarReminders(db, env, now);
+        const scheduledMail = await runScheduledMail(db, env, now);
+        console.log("五分钟任务完成", { reminders, scheduledMail });
       } else {
-        const r = await runDailyMaintenance(db, new Date());
+        const r = await runDailyMaintenance(db, new Date(controller.scheduledTime));
         console.log("每日维护完成", r);
       }
     } finally {

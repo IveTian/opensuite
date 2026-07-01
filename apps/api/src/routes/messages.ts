@@ -9,7 +9,6 @@ import {
   ilike,
   inArray,
   lte,
-  ne,
   notInArray,
   or,
   sql,
@@ -22,15 +21,13 @@ import {
   emailAddresses,
   eventAttendees,
   messages,
-  systemSettings,
-  userQuota,
 } from "@mailflare/db";
 import type { Database } from "@mailflare/db";
 import {
   bulkActionSchema,
   saveDraftSchema,
+  scheduleMessageSchema,
   sendMessageSchema,
-  SYSTEM_SETTINGS_ID,
   updateMessageSchema,
 } from "@mailflare/shared";
 import { z } from "zod";
@@ -39,8 +36,12 @@ import type { Bindings } from "../env.js";
 import { parseIcs } from "../lib/ical.js";
 import { makeSnippet, resolveDelivery, storeInboundEmail } from "../lib/mail.js";
 import { readableAddressIds, sendableAddressIds } from "../lib/mailbox-access.js";
+import {
+  OutboundMailError,
+  scheduleUserMessage,
+  sendUserMessage,
+} from "../lib/outbound-mail.js";
 import { sanitizeOutboundHtml } from "../lib/sanitize.js";
-import { attachmentKey, base64ToBytes, rawKey } from "../lib/storage.js";
 
 /**
  * 用户可访问的全部地址 id：自有地址（含别名）+ 被授权的公共邮箱。
@@ -100,59 +101,6 @@ interface CalendarInvitePreview {
 }
 
 const INVITE_PARTSTATS = new Set<InvitePartstat>(["needs-action", "accepted", "declined", "tentative"]);
-
-function htmlToPlainText(html: string): string {
-  return html
-    .replace(/<\s*br\s*\/?>/gi, "\n")
-    .replace(/<\s*\/p\s*>/gi, "\n")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .replace(/[ \t]{2,}/g, " ")
-    .trim();
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function textToHtml(text: string): string {
-  return `<p>${escapeHtml(text).replace(/\r?\n/g, "<br>")}</p>`;
-}
-
-function appendHtmlBlocks(
-  html: string | undefined,
-  text: string | undefined,
-  blocks: (string | null | undefined)[],
-): string | undefined {
-  const parts = blocks.map((b) => b?.trim()).filter((b): b is string => Boolean(b));
-  if (!parts.length) return html;
-  const base = html?.trim() || (text ? textToHtml(text) : "<p></p>");
-  return sanitizeOutboundHtml(`${base}<br>${parts.join("<br>")}`);
-}
-
-function appendTextBlocks(
-  text: string | undefined,
-  html: string | undefined,
-  blocks: (string | null | undefined)[],
-): string | undefined {
-  const parts = blocks
-    .map((b) => (b ? htmlToPlainText(b) : ""))
-    .filter(Boolean);
-  if (!parts.length) return text || (html ? htmlToPlainText(html) : undefined);
-  const base = text?.trim() || (html ? htmlToPlainText(html) : "");
-  return [base, ...parts].filter(Boolean).join("\n\n");
-}
 
 function normalizeInvitePartstat(v: string | null): InvitePartstat | null {
   const s = (v ?? "").toLowerCase();
@@ -303,6 +251,9 @@ const LIST_FIELDS = {
   sizeBytes: messages.sizeBytes,
   receivedAt: messages.receivedAt,
   sentAt: messages.sentAt,
+  scheduledAt: messages.scheduledAt,
+  sendStatus: messages.sendStatus,
+  sendError: messages.sendError,
   createdAt: messages.createdAt,
   hasAttachments: sql<boolean>`
     exists (
@@ -340,10 +291,10 @@ export const messageRoutes = new Hono<AppEnv>()
 
     const conds = [inArray(messages.addressId, ids)];
     if (folder === "starred") {
-      conds.push(eq(messages.isStarred, true), ne(messages.folder, "trash"));
+      conds.push(eq(messages.isStarred, true), notInArray(messages.folder, ["trash", "scheduled"]));
     } else if (folder === "all") {
-      // 「全部邮件」：除回收站与草稿外的所有邮件（收件箱/已发/归档）
-      conds.push(notInArray(messages.folder, ["trash", "draft"]));
+      // 「全部邮件」：除回收站、草稿、定时外的所有已发生邮件（收件箱/已发/归档）
+      conds.push(notInArray(messages.folder, ["trash", "draft", "scheduled"]));
     } else {
       conds.push(eq(messages.folder, folder));
     }
@@ -364,7 +315,7 @@ export const messageRoutes = new Hono<AppEnv>()
         .select(LIST_FIELDS)
         .from(messages)
         .where(where)
-        .orderBy(desc(messages.createdAt))
+        .orderBy(folder === "scheduled" ? asc(messages.scheduledAt) : desc(messages.createdAt))
         .limit(limit)
         .offset(offset),
       db.select({ n: sql<number>`count(*)::int` }).from(messages).where(where),
@@ -376,7 +327,16 @@ export const messageRoutes = new Hono<AppEnv>()
   .get("/counts", async (c) => {
     const db = c.var.db;
     const ids = await scopeIds(db, c.var.user!.id, c.req.query("addressId"));
-    const empty = { inbox: 0, sent: 0, draft: 0, trash: 0, archive: 0, starred: 0, all: 0 };
+    const empty = {
+      inbox: 0,
+      sent: 0,
+      draft: 0,
+      scheduled: 0,
+      trash: 0,
+      archive: 0,
+      starred: 0,
+      all: 0,
+    };
     if (!ids?.length) return c.json(empty);
 
     const rows = await db
@@ -391,8 +351,10 @@ export const messageRoutes = new Hono<AppEnv>()
     const out = { ...empty };
     for (const r of rows) {
       if (r.folder in out) (out as Record<string, number>)[r.folder] = r.unread ?? 0;
-      // 「全部邮件」：除回收站与草稿外的未读累加
-      if (r.folder !== "trash" && r.folder !== "draft") out.all += r.unread ?? 0;
+      // 「全部邮件」：除回收站、草稿、定时外的未读累加
+      if (r.folder !== "trash" && r.folder !== "draft" && r.folder !== "scheduled") {
+        out.all += r.unread ?? 0;
+      }
     }
     // 星标未读（排除回收站）
     out.starred = await db.$count(
@@ -401,7 +363,7 @@ export const messageRoutes = new Hono<AppEnv>()
         inArray(messages.addressId, ids),
         eq(messages.isStarred, true),
         eq(messages.isRead, false),
-        ne(messages.folder, "trash"),
+        notInArray(messages.folder, ["trash", "scheduled"]),
       ),
     );
     return c.json(out);
@@ -442,7 +404,7 @@ export const messageRoutes = new Hono<AppEnv>()
   /**
    * 高级搜索：多条件组合，跨可访问地址。
    * 支持 q / from / to / subject / participant（与某人往来）/ hasAttachment /
-   * unread / starred / dateFrom / dateTo / folder（不传或 all=除草稿与回收站外全部）。
+   * unread / starred / dateFrom / dateTo / folder（不传或 all=除草稿、定时与回收站外全部）。
    * 返回 {items,total}，字段与列表一致，前端可直接复用渲染。
    */
   .get("/search", async (c) => {
@@ -459,7 +421,7 @@ export const messageRoutes = new Hono<AppEnv>()
 
     const folder = query.folder?.trim();
     if (folder && folder !== "all") conds.push(eq(messages.folder, folder));
-    else conds.push(notInArray(messages.folder, ["draft", "trash"]));
+    else conds.push(notInArray(messages.folder, ["draft", "scheduled", "trash"]));
 
     const like = (s: string) => `%${s.trim()}%`;
 
@@ -610,148 +572,24 @@ export const messageRoutes = new Hono<AppEnv>()
 
   /** 发信：附件 + 回复线程头 + 发送草稿后清理 */
   .post("/send", zValidator("json", sendMessageSchema), async (c) => {
-    const db = c.var.db;
-    const user = c.var.user!;
-    const body = c.req.valid("json");
-    if (body.html) body.html = sanitizeOutboundHtml(body.html);
-
-    const from = await db.query.emailAddresses.findFirst({
-      where: and(
-        eq(emailAddresses.id, body.fromAddressId),
-        eq(emailAddresses.status, "active"),
-      ),
-    });
-    // 自有邮箱或被授权的公共邮箱均可发信
-    const sendable = await sendableAddressIds(db, user.id);
-    if (!from || (from.type !== "mailbox" && from.type !== "shared") || !sendable.includes(from.id)) {
-      return c.json({ error: "发件地址无效或不属于你" }, 422);
-    }
-    // 发信人显示名：地址自定义优先，回退用户昵称
-    const senderName = from.senderName || user.name;
-    const sys = await db.query.systemSettings.findFirst({
-      where: eq(systemSettings.id, SYSTEM_SETTINGS_ID),
-    });
-    const signatureBlocks = [
-      from.type === "shared" ? from.sharedSignatureHtml : null,
-      sys?.orgSignatureHtml,
-    ];
-    const finalHtml = appendHtmlBlocks(body.html, body.text, signatureBlocks);
-    const finalText = appendTextBlocks(body.text, body.html, signatureBlocks);
-
-    const quota = await db.query.userQuota.findFirst({
-      where: eq(userQuota.userId, user.id),
-    });
-    if (quota?.dailySendQuota != null && (quota.sentToday ?? 0) >= quota.dailySendQuota) {
-      return c.json({ error: "今日发信已达上限" }, 429);
-    }
-
-    // 线程头（回复/转发）
-    let inReplyTo: string | null = null;
-    let references: string | null = null;
-    if (body.replyToMessageId) {
-      const orig = await accessibleMessage(db, user.id, body.replyToMessageId);
-      if (orig?.m.messageId) {
-        inReplyTo = orig.m.messageId;
-        references = `${orig.m.references ? orig.m.references + " " : ""}${orig.m.messageId}`;
-      }
-    }
-    const headers: Record<string, string> = {};
-    if (inReplyTo) headers["In-Reply-To"] = inReplyTo;
-    if (references) headers["References"] = references;
-
-    const emailAttachments = (body.attachments ?? []).map((a) =>
-      a.inline && a.contentId
-        ? {
-            disposition: "inline" as const,
-            contentId: a.contentId,
-            filename: a.filename,
-            type: a.contentType ?? "application/octet-stream",
-            content: base64ToBytes(a.contentBase64),
-          }
-        : {
-            disposition: "attachment" as const,
-            filename: a.filename,
-            type: a.contentType ?? "application/octet-stream",
-            content: base64ToBytes(a.contentBase64),
-          },
-    );
-
     try {
-      await c.env.EMAIL.send({
-        from: { email: from.address, name: senderName },
-        to: body.to,
-        ...(body.cc?.length ? { cc: body.cc } : {}),
-        ...(body.bcc?.length ? { bcc: body.bcc } : {}),
-        subject: body.subject,
-        ...(finalText ? { text: finalText } : {}),
-        ...(finalHtml ? { html: finalHtml } : {}),
-        ...(Object.keys(headers).length ? { headers } : {}),
-        ...(emailAttachments.length ? { attachments: emailAttachments } : {}),
-      });
+      const msg = await sendUserMessage(c.var.db, c.env, c.var.user!, c.req.valid("json"));
+      return c.json(msg, 201);
     } catch (err) {
-      return c.json(
-        { error: `发送失败：${err instanceof Error ? err.message : "未知错误"}` },
-        502,
-      );
+      if (err instanceof OutboundMailError) return c.json({ error: err.message }, err.status);
+      return c.json({ error: err instanceof Error ? err.message : "发送失败" }, 502);
     }
+  })
 
-    const domain = from.address.split("@")[1] ?? "mail";
-    const genMessageId = `<${crypto.randomUUID()}@${domain}>`;
-    const [msg] = await db
-      .insert(messages)
-      .values({
-        addressId: from.id,
-        direction: "outbound",
-        messageId: genMessageId,
-        inReplyTo,
-        references,
-        fromAddress: from.address,
-        fromName: senderName,
-        toAddresses: body.to,
-        ccAddresses: body.cc ?? [],
-        bccAddresses: body.bcc ?? [],
-        subject: body.subject,
-        snippet: makeSnippet(finalText, finalHtml),
-        bodyText: finalText ?? null,
-        bodyHtml: finalHtml ?? null,
-        folder: "sent",
-        isRead: true,
-        sentAt: new Date(),
-      })
-      .returning();
-
-    // 出站附件入 R2
-    for (const a of body.attachments ?? []) {
-      const bytes = base64ToBytes(a.contentBase64);
-      const [row] = await db
-        .insert(attachments)
-        .values({
-          messageId: msg!.id,
-          filename: a.filename,
-          contentType: a.contentType ?? null,
-          sizeBytes: bytes.byteLength,
-          r2ObjectKey: "pending",
-        })
-        .returning();
-      const ak = attachmentKey(msg!.id, row!.id);
-      await c.env.RAW_EMAILS.put(ak, bytes);
-      await db.update(attachments).set({ r2ObjectKey: ak }).where(eq(attachments.id, row!.id));
+  /** 定时发送：保存完整出站内容，由 Cron 到点发送 */
+  .post("/schedule", zValidator("json", scheduleMessageSchema), async (c) => {
+    try {
+      const msg = await scheduleUserMessage(c.var.db, c.env, c.var.user!, c.req.valid("json"));
+      return c.json(msg, 201);
+    } catch (err) {
+      if (err instanceof OutboundMailError) return c.json({ error: err.message }, err.status);
+      return c.json({ error: err instanceof Error ? err.message : "定时发送失败" }, 502);
     }
-
-    if (quota?.dailySendQuota != null) {
-      await db
-        .update(userQuota)
-        .set({ sentToday: sql`${userQuota.sentToday} + 1` })
-        .where(eq(userQuota.userId, user.id));
-    }
-    // 发送的是草稿 → 删除草稿
-    if (body.draftId) {
-      const draft = await accessibleMessage(db, user.id, body.draftId);
-      if (draft?.m.folder === "draft") {
-        await db.delete(messages).where(eq(messages.id, body.draftId));
-      }
-    }
-    return c.json(msg, 201);
   })
 
   /** 保存草稿（新建或更新） */
@@ -788,7 +626,7 @@ export const messageRoutes = new Hono<AppEnv>()
     }
     const [m] = await db
       .insert(messages)
-      .values({ ...values, direction: "outbound", folder: "draft", isRead: true })
+      .values({ ...values, direction: "outbound", folder: "draft", isRead: true, sendStatus: "draft" })
       .returning();
     return c.json({ id: m!.id }, 201);
   })

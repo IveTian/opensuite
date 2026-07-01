@@ -78,6 +78,13 @@
       "when": 1782924413488,
       "tag": "0010_mature_the_professor",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1782927559824,
+      "tag": "0011_scheduled_messages",
+      "breakpoints": true
     }
   ]
 }
