@@ -3,8 +3,7 @@ import { useState, type ComponentType } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { signOut, useSession } from "../lib/auth-client";
 import { useTheme } from "../providers/theme";
-import { useBranding } from "../providers/branding";
-import { BrandMark } from "./BrandMark";
+import { AppSwitcher } from "./AppSwitcher";
 import { PersonAvatar } from "./PersonAvatar";
 import {
   AddressBookIcon,
@@ -44,7 +43,7 @@ const NAV: {
 export function AdminLayout() {
   const { theme, toggle } = useTheme();
   const { data: session } = useSession();
-  const brand = useBranding();
+  const avatarImage = (session?.user as { image?: string | null } | undefined)?.image ?? null;
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -55,24 +54,20 @@ export function AdminLayout() {
 
   const sidebar = (
     <div className="flex h-full w-60 flex-col bg-background p-3">
-      <div className="flex items-center justify-between px-2 py-2">
-        <div className="flex items-center gap-2">
-          <BrandMark boxClassName="size-7 rounded-lg" iconClassName="size-4" />
-          <span className="text-base font-semibold text-foreground">{brand.siteName}</span>
-        </div>
+      {/* 移动抽屉的关闭按钮（桌面隐藏，桌面顶部由全宽 Header 承担） */}
+      <div className="mb-1 flex justify-end md:hidden">
         <Button
           size="sm"
           variant="ghost"
           isIconOnly
           aria-label="关闭菜单"
-          className="md:hidden"
           onClick={() => setMobileOpen(false)}
         >
           <XIcon className="size-4" />
         </Button>
       </div>
 
-      <p className="px-3 pb-1 pt-4 text-xs font-medium text-muted">管理后台</p>
+      <p className="px-3 pb-1 pt-2 text-xs font-medium text-muted">管理后台</p>
       <nav className="flex flex-1 flex-col gap-0.5">
         {NAV.map((item) => {
           const Ico = item.icon;
@@ -120,9 +115,6 @@ export function AdminLayout() {
           </span>
           <span className="truncate text-xs text-muted">{session?.user.email}</span>
         </div>
-        <Button size="sm" variant="ghost" isIconOnly aria-label="切换主题" onClick={toggle}>
-          {theme === "dark" ? <MoonIcon className="size-4" /> : <SunIcon className="size-4" />}
-        </Button>
         <Button size="sm" variant="ghost" isIconOnly aria-label="退出登录" onClick={logout}>
           <LogOutIcon className="size-4" />
         </Button>
@@ -131,41 +123,61 @@ export function AdminLayout() {
   );
 
   return (
-    <div className="flex h-full bg-background">
-      {/* 桌面侧栏 */}
-      <aside className="hidden shrink-0 border-r border-border md:block">{sidebar}</aside>
-
-      {/* 移动端抽屉 */}
-      {mobileOpen && (
-        <div className="fixed inset-0 z-50 md:hidden">
-          <div
-            className="absolute inset-0 bg-backdrop"
-            onClick={() => setMobileOpen(false)}
-          />
-          <div className="absolute inset-y-0 left-0 border-r border-border shadow-overlay">
-            {sidebar}
-          </div>
-        </div>
-      )}
-
-      {/* 主区 */}
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="flex items-center gap-3 border-b border-border px-4 py-3 md:hidden">
+    <div className="flex h-full flex-col bg-background">
+      {/* 顶部全宽 Header：应用切换 + 主题 + 账户（与邮箱/通讯录一致） */}
+      <header className="flex shrink-0 items-center justify-between border-b border-border px-4 py-2.5 sm:px-6">
+        <div className="flex items-center gap-2">
           <Button
             size="sm"
             variant="ghost"
             isIconOnly
             aria-label="打开菜单"
+            className="md:hidden"
             onClick={() => setMobileOpen(true)}
           >
             <MenuIcon className="size-5" />
           </Button>
-          <div className="flex items-center gap-2">
-            <BrandMark boxClassName="size-6 rounded-md" iconClassName="size-3.5" />
-            <span className="text-sm font-semibold text-foreground">{brand.siteName}</span>
+          <AppSwitcher current="admin" />
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Button variant="ghost" isIconOnly aria-label="切换主题" onClick={toggle}>
+            {theme === "dark" ? <MoonIcon className="size-4" /> : <SunIcon className="size-4" />}
+          </Button>
+          <button
+            onClick={() => navigate("/profile")}
+            className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-focus/60"
+            title="账户设置"
+            aria-label="账户设置"
+          >
+            <PersonAvatar
+              url={avatarImage}
+              email={session?.user.email}
+              seed={session?.user.email}
+              className="size-8 shrink-0"
+            />
+          </button>
+        </div>
+      </header>
+
+      <div className="flex min-h-0 flex-1">
+        {/* 桌面侧栏 */}
+        <aside className="hidden shrink-0 border-r border-border md:block">{sidebar}</aside>
+
+        {/* 移动端抽屉 */}
+        {mobileOpen && (
+          <div className="fixed inset-0 z-50 md:hidden">
+            <div
+              className="absolute inset-0 bg-backdrop"
+              onClick={() => setMobileOpen(false)}
+            />
+            <div className="absolute inset-y-0 left-0 border-r border-border shadow-overlay">
+              {sidebar}
+            </div>
           </div>
-        </header>
-        <main className="flex-1 overflow-auto px-6 pb-10 pt-8">
+        )}
+
+        {/* 主区 */}
+        <main className="min-w-0 flex-1 overflow-auto px-6 pb-10 pt-8">
           <div className="mx-auto max-w-6xl">
             <Outlet />
           </div>

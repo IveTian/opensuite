@@ -148,7 +148,7 @@ export function Contacts() {
             {theme === "dark" ? <MoonIcon className="size-4" /> : <SunIcon className="size-4" />}
           </Button>
           <button
-            onClick={() => navigate("/account")}
+            onClick={() => navigate("/profile")}
             className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-focus/60"
             title="账户设置"
             aria-label="账户设置"

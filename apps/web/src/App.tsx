@@ -4,7 +4,7 @@ import { ProtectedRoute } from "./components/ProtectedRoute";
 import { Login } from "./pages/Login";
 import { Register } from "./pages/Register";
 import { Home } from "./pages/Home";
-import { Account } from "./pages/Account";
+import { Profile } from "./pages/Profile";
 import { Contacts } from "./pages/contacts/Contacts";
 import { Mailbox } from "./pages/mail/Mailbox";
 import { Dashboard } from "./pages/admin/Dashboard";
@@ -46,7 +46,8 @@ export function App() {
           {/* 应用页（Launchpad）与用户自助页（需登录） */}
           <Route element={<ProtectedRoute />}>
             <Route path="/" element={<Home />} />
-            <Route path="/account" element={<Account />} />
+            <Route path="/profile" element={<Profile />} />
+            <Route path="/account" element={<Navigate to="/profile" replace />} />
             <Route path="/contacts" element={<Contacts />} />
             <Route path="/mail" element={<Mailbox />} />
           </Route>

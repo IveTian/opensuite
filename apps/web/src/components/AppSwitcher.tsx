@@ -10,7 +10,7 @@ import { CheckIcon, ChevronDownIcon, DashboardIcon } from "./icons";
  * 顶部品牌 + 应用切换器：显示「{站点} · {当前应用} ▾」，
  * 点击展开下拉可切到其它应用（邮箱 / 通讯录 / 管理后台）或回应用中心。
  */
-export function AppSwitcher({ current }: { current: string }) {
+export function AppSwitcher({ current, label }: { current: string; label?: string }) {
   const navigate = useNavigate();
   const { siteName } = useBranding();
   const { data: session } = useSession();
@@ -20,6 +20,8 @@ export function AppSwitcher({ current }: { current: string }) {
 
   const apps = APPS.filter((a) => !a.adminOnly || role === "admin");
   const currentApp = apps.find((a) => a.key === current);
+  // current 不在 APPS 时（如账户中心）用传入 label 展示
+  const currentName = label ?? currentApp?.name;
 
   useEffect(() => {
     if (!open) return;
@@ -47,8 +49,8 @@ export function AppSwitcher({ current }: { current: string }) {
       >
         <BrandMark />
         <span className="truncate text-sm font-semibold text-foreground">{siteName}</span>
-        {currentApp && (
-          <span className="shrink-0 text-sm text-muted">· {currentApp.name}</span>
+        {currentName && (
+          <span className="shrink-0 text-sm text-muted">· {currentName}</span>
         )}
         <ChevronDownIcon
           className={"size-4 shrink-0 text-muted transition-transform " + (open ? "rotate-180" : "")}

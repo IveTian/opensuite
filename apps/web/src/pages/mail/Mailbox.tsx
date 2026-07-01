@@ -50,6 +50,7 @@ import { useBranding } from "../../providers/branding";
 import { AppSwitcher } from "../../components/AppSwitcher";
 import { Select } from "../../components/Select";
 import { PersonAvatar, useAvatars } from "../../components/PersonAvatar";
+import { useSession } from "../../lib/auth-client";
 import { Compose, type ComposeInitial } from "./Compose";
 import { MessageView, type MsgDetail } from "./MessageView";
 
@@ -140,6 +141,8 @@ export function Mailbox() {
   const navigate = useNavigate();
   const location = useLocation();
   const nameOf = useContactNames();
+  const { data: session } = useSession();
+  const avatarImage = (session?.user as { image?: string | null } | undefined)?.image ?? null;
   const { data: accounts } = useFetch<MailboxAccount[]>("/api/me/accounts");
   const { data: mailSettings } = useFetch<MailSettings>("/api/me/mail-settings");
   const { data: quota } = useFetch<Quota | null>("/api/me/quota");
@@ -530,13 +533,33 @@ export function Mailbox() {
       : 0;
 
   return (
-    <div className="flex h-full bg-background">
-      {/* 侧栏 */}
-      <aside className="hidden w-60 shrink-0 flex-col border-r border-border p-3 sm:flex">
-        <div className="px-1 py-1">
-          <AppSwitcher current="mail" />
+    <div className="flex h-full flex-col bg-background">
+      {/* 顶部全宽 Header：应用切换 + 主题 + 账户（与通讯录一致） */}
+      <header className="flex shrink-0 items-center justify-between border-b border-border px-4 py-2.5 sm:px-6">
+        <AppSwitcher current="mail" />
+        <div className="flex items-center gap-1.5">
+          <Button variant="ghost" isIconOnly aria-label="切换主题" onClick={toggle}>
+            {theme === "dark" ? <MoonIcon className="size-4" /> : <SunIcon className="size-4" />}
+          </Button>
+          <button
+            onClick={() => navigate("/profile")}
+            className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-focus/60"
+            title="账户设置"
+            aria-label="账户设置"
+          >
+            <PersonAvatar
+              url={avatarImage}
+              email={session?.user.email}
+              seed={session?.user.email}
+              className="size-8 shrink-0"
+            />
+          </button>
         </div>
+      </header>
 
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        {/* 侧栏 */}
+        <aside className="hidden w-60 shrink-0 flex-col border-r border-border p-3 sm:flex">
         {/* 账号切换器：个人邮箱 + 被授权的公共邮箱 */}
         {accountList.length > 1 && (
           <div className="px-1 pb-1 pt-2">
@@ -607,35 +630,15 @@ export function Mailbox() {
         )}
 
         <div className="mt-3 flex flex-col gap-1">
-          <div className="flex gap-1">
-            <Button
-              size="sm"
-              variant="ghost"
-              className="flex-1 justify-start"
-              onClick={() => navigate("/account")}
-            >
-              <UserIcon className="size-4" />
-              个人中心
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              isIconOnly
-              aria-label="快捷键"
-              onClick={() => setShowHelp(true)}
-            >
-              <KeyboardIcon className="size-4" />
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              isIconOnly
-              aria-label="切换主题"
-              onClick={toggle}
-            >
-              {theme === "dark" ? <MoonIcon className="size-4" /> : <SunIcon className="size-4" />}
-            </Button>
-          </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="justify-start"
+            onClick={() => setShowHelp(true)}
+          >
+            <KeyboardIcon className="size-4" />
+            快捷键
+          </Button>
           <Button
             size="sm"
             variant="ghost"
@@ -984,6 +987,7 @@ export function Mailbox() {
             </div>
           )}
         </div>
+      </div>
       </div>
 
       {/* 高级搜索 */}
