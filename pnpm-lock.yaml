@@ -12,6 +12,9 @@ catalogs:
     '@heroui/styles':
       specifier: ^3.2.1
       version: 3.2.1
+    '@internationalized/date':
+      specifier: ^3.12.2
+      version: 3.12.2
     '@tailwindcss/vite':
       specifier: ^4.3.0
       version: 4.3.2
@@ -129,6 +132,9 @@ importers:
       '@heroui/styles':
         specifier: 'catalog:'
         version: 3.2.1(tailwind-merge@3.4.0)(tailwindcss@4.3.2)
+      '@internationalized/date':
+        specifier: 'catalog:'
+        version: 3.12.2
       '@mailflare/shared':
         specifier: workspace:*
         version: link:../../packages/shared

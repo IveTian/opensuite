@@ -1,4 +1,4 @@
-import { Button, Input, Label, Switch, TextField } from "@heroui/react";
+import { Button, Input, Label, Modal, Switch, TextField } from "@heroui/react";
 import { useState, type FormEvent } from "react";
 import type { PersonalContact } from "@mailflare/shared";
 import { Alert } from "../../components/ui";
@@ -56,74 +56,70 @@ export function PersonalContactForm({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      onClick={onClose}
-    >
-      <form
-        onClick={(e) => e.stopPropagation()}
-        onSubmit={save}
-        className="w-full max-w-md rounded-2xl bg-surface p-5 shadow-overlay"
-      >
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-foreground">
-            {editing ? "编辑联系人" : "新建联系人"}
-          </h2>
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            isIconOnly
-            aria-label="关闭"
-            onClick={onClose}
-          >
-            <XIcon className="size-4" />
-          </Button>
-        </div>
+    <Modal.Root isOpen onOpenChange={(v) => { if (!v) onClose(); }}>
+      <Modal.Backdrop>
+        <Modal.Container size="md">
+          <Modal.Dialog>
+            <form onSubmit={save}>
+              <Modal.Header>
+                <div className="flex items-center justify-between gap-4">
+                  <Modal.Heading className="text-lg font-semibold text-foreground">
+                    {editing ? "编辑联系人" : "新建联系人"}
+                  </Modal.Heading>
+                  <Button size="sm" variant="ghost" isIconOnly aria-label="关闭" onPress={onClose}>
+                    <XIcon className="size-4" />
+                  </Button>
+                </div>
+              </Modal.Header>
 
-        <div className="flex flex-col gap-3">
-          <TextField isRequired>
-            <Label>名称（别名）</Label>
-            <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="张三" />
-          </TextField>
-          <TextField isRequired>
-            <Label>邮箱</Label>
-            <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="a@b.com" />
-          </TextField>
-          <div className="grid grid-cols-2 gap-3">
-            <TextField>
-              <Label>电话</Label>
-              <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
-            </TextField>
-            <TextField>
-              <Label>公司</Label>
-              <Input value={company} onChange={(e) => setCompany(e.target.value)} />
-            </TextField>
-          </div>
-          <TextField>
-            <Label>职位</Label>
-            <Input value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} />
-          </TextField>
-          <TextField>
-            <Label>备注</Label>
-            <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
-          </TextField>
-          <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
-            <Switch isSelected={isFavorite} onChange={setIsFavorite} />
-            标记为收藏
-          </label>
-          {err && <Alert>{err}</Alert>}
-        </div>
+              <Modal.Body>
+                <div className="flex flex-col gap-3">
+                  <TextField isRequired>
+                    <Label>名称（别名）</Label>
+                    <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="张三" />
+                  </TextField>
+                  <TextField isRequired>
+                    <Label>邮箱</Label>
+                    <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="a@b.com" />
+                  </TextField>
+                  <div className="grid grid-cols-2 gap-3">
+                    <TextField>
+                      <Label>电话</Label>
+                      <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
+                    </TextField>
+                    <TextField>
+                      <Label>公司</Label>
+                      <Input value={company} onChange={(e) => setCompany(e.target.value)} />
+                    </TextField>
+                  </div>
+                  <TextField>
+                    <Label>职位</Label>
+                    <Input value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} />
+                  </TextField>
+                  <TextField>
+                    <Label>备注</Label>
+                    <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
+                  </TextField>
+                  <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
+                    <Switch isSelected={isFavorite} onChange={setIsFavorite} />
+                    标记为收藏
+                  </label>
+                  {err && <Alert>{err}</Alert>}
+                </div>
+              </Modal.Body>
 
-        <div className="mt-4 flex justify-end gap-2">
-          <Button type="button" variant="ghost" onClick={onClose}>
-            取消
-          </Button>
-          <Button type="submit" variant="primary" isDisabled={busy}>
-            {busy ? "保存中…" : "保存"}
-          </Button>
-        </div>
-      </form>
-    </div>
+              <Modal.Footer>
+                <Button type="button" variant="ghost" onPress={onClose}>
+                  取消
+                </Button>
+                <Button type="submit" variant="primary" isDisabled={busy}>
+                  {busy ? "保存中…" : "保存"}
+                </Button>
+              </Modal.Footer>
+            </form>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
+    </Modal.Root>
   );
 }

@@ -1,5 +1,6 @@
-import { Button, Input, Label, Switch, TextField } from "@heroui/react";
+import { Button, DateField, Input, Label, Modal, Switch, TextField } from "@heroui/react";
 import { useState } from "react";
+import { parseDate } from "@internationalized/date";
 import { Select } from "./Select";
 import { SearchIcon, XIcon } from "./icons";
 
@@ -71,9 +72,6 @@ export function searchSummary(s: MailSearch): string {
   return parts.join(" · ") || "全部邮件";
 }
 
-const dateCls =
-  "w-full rounded-xl border border-border bg-surface-secondary px-3 py-2 text-sm text-foreground focus:border-field-border-focus focus:outline-none focus:ring-2 focus:ring-focus/40";
-
 /** 高级搜索弹窗 */
 export function AdvancedSearch({
   initial,
@@ -111,92 +109,116 @@ export function AdvancedSearch({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-16"
-      onClick={onClose}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-lg rounded-2xl bg-surface p-5 shadow-overlay"
-      >
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-foreground">高级搜索</h2>
-          <Button size="sm" variant="ghost" isIconOnly aria-label="关闭" onClick={onClose}>
-            <XIcon className="size-4" />
-          </Button>
-        </div>
-
-        <div className="flex flex-col gap-3">
-          <TextField>
-            <Label>关键词</Label>
-            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="主题 / 联系人 / 内容" />
-          </TextField>
-          <div className="grid grid-cols-2 gap-3">
-            <TextField>
-              <Label>发件人</Label>
-              <Input value={from} onChange={(e) => setFrom(e.target.value)} placeholder="name@example.com" />
-            </TextField>
-            <TextField>
-              <Label>收件人</Label>
-              <Input value={to} onChange={(e) => setTo(e.target.value)} placeholder="name@example.com" />
-            </TextField>
-          </div>
-          <TextField>
-            <Label>主题包含</Label>
-            <Input value={subject} onChange={(e) => setSubject(e.target.value)} />
-          </TextField>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="mb-1 block text-sm text-foreground">范围</Label>
-              <Select
-                ariaLabel="文件夹范围"
-                value={folder}
-                onChange={setFolder}
-                options={[
-                  { value: "", label: "全部邮件" },
-                  { value: "inbox", label: "收件箱" },
-                  { value: "sent", label: "已发送" },
-                  { value: "archive", label: "归档" },
-                ]}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Label className="mb-1 block text-sm text-foreground">起</Label>
-                <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className={dateCls} />
+    <Modal.Root isOpen onOpenChange={(v) => { if (!v) onClose(); }}>
+      <Modal.Backdrop>
+        <Modal.Container size="lg">
+          <Modal.Dialog>
+            <Modal.Header>
+              <div className="flex items-center justify-between gap-4">
+                <Modal.Heading className="text-lg font-semibold text-foreground">
+                  高级搜索
+                </Modal.Heading>
+                <Button size="sm" variant="ghost" isIconOnly aria-label="关闭" onPress={onClose}>
+                  <XIcon className="size-4" />
+                </Button>
               </div>
-              <div>
-                <Label className="mb-1 block text-sm text-foreground">止</Label>
-                <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className={dateCls} />
-              </div>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-4 pt-1">
-            <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
-              <Switch isSelected={hasAttachment} onChange={setHasAttachment} />
-              有附件
-            </label>
-            <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
-              <Switch isSelected={unread} onChange={setUnread} />
-              仅未读
-            </label>
-            <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
-              <Switch isSelected={starred} onChange={setStarred} />
-              仅星标
-            </label>
-          </div>
-        </div>
+            </Modal.Header>
 
-        <div className="mt-5 flex justify-end gap-2">
-          <Button type="button" variant="ghost" onClick={onClose}>
-            取消
-          </Button>
-          <Button type="button" variant="primary" onClick={apply}>
-            <SearchIcon className="size-4" />
-            搜索
-          </Button>
-        </div>
-      </div>
-    </div>
+            <Modal.Body>
+              <div className="flex flex-col gap-3">
+                <TextField>
+                  <Label>关键词</Label>
+                  <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="主题 / 联系人 / 内容" />
+                </TextField>
+                <div className="grid grid-cols-2 gap-3">
+                  <TextField>
+                    <Label>发件人</Label>
+                    <Input value={from} onChange={(e) => setFrom(e.target.value)} placeholder="name@example.com" />
+                  </TextField>
+                  <TextField>
+                    <Label>收件人</Label>
+                    <Input value={to} onChange={(e) => setTo(e.target.value)} placeholder="name@example.com" />
+                  </TextField>
+                </div>
+                <TextField>
+                  <Label>主题包含</Label>
+                  <Input value={subject} onChange={(e) => setSubject(e.target.value)} />
+                </TextField>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="mb-1 block text-sm text-foreground">范围</Label>
+                    <Select
+                      ariaLabel="文件夹范围"
+                      value={folder}
+                      onChange={setFolder}
+                      options={[
+                        { value: "", label: "全部邮件" },
+                        { value: "inbox", label: "收件箱" },
+                        { value: "sent", label: "已发送" },
+                        { value: "archive", label: "归档" },
+                      ]}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="mb-1 block text-sm text-foreground">起</Label>
+                      <DateField.Root
+                        aria-label="起始日期"
+                        value={dateFrom ? parseDate(dateFrom) : null}
+                        onChange={(v) => setDateFrom(v ? v.toString() : "")}
+                      >
+                        <DateField.Group fullWidth>
+                          <DateField.Input>
+                            {(segment) => <DateField.Segment segment={segment} />}
+                          </DateField.Input>
+                        </DateField.Group>
+                      </DateField.Root>
+                    </div>
+                    <div>
+                      <Label className="mb-1 block text-sm text-foreground">止</Label>
+                      <DateField.Root
+                        aria-label="结束日期"
+                        value={dateTo ? parseDate(dateTo) : null}
+                        onChange={(v) => setDateTo(v ? v.toString() : "")}
+                      >
+                        <DateField.Group fullWidth>
+                          <DateField.Input>
+                            {(segment) => <DateField.Segment segment={segment} />}
+                          </DateField.Input>
+                        </DateField.Group>
+                      </DateField.Root>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-4 pt-1">
+                  <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
+                    <Switch isSelected={hasAttachment} onChange={setHasAttachment} />
+                    有附件
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
+                    <Switch isSelected={unread} onChange={setUnread} />
+                    仅未读
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
+                    <Switch isSelected={starred} onChange={setStarred} />
+                    仅星标
+                  </label>
+                </div>
+              </div>
+            </Modal.Body>
+
+            <Modal.Footer>
+              <Button variant="ghost" onPress={onClose}>
+                取消
+              </Button>
+              <Button variant="primary" onPress={apply}>
+                <SearchIcon className="size-4" />
+                搜索
+              </Button>
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
+    </Modal.Root>
   );
 }

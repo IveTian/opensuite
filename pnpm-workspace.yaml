@@ -16,6 +16,7 @@ catalog:
   "@vitejs/plugin-react": "^6.0.0"
   "@heroui/react": "^3.2.1"
   "@heroui/styles": "^3.2.1"
+  "@internationalized/date": "^3.12.2"
 
   # 后端 / 共享
   hono: "^4.12.0"
