@@ -12,6 +12,7 @@ import {
   ArchiveIcon,
   ArrowLeftIcon,
   BellIcon,
+  CalendarIcon,
   DownloadIcon,
   FileIcon,
   InboxIcon,
@@ -21,6 +22,7 @@ import {
   MailOpenIcon,
   MoonIcon,
   PencilIcon,
+  PaperclipIcon,
   RefreshIcon,
   SearchIcon,
   SendIcon,
@@ -72,6 +74,8 @@ interface MsgItem {
   receivedAt: string | null;
   sentAt: string | null;
   createdAt: string;
+  hasAttachments?: boolean;
+  hasCalendarInvite?: boolean;
 }
 /** 各文件夹的「未读」计数（侧栏徽标只显示未读） */
 interface Counts {
@@ -885,6 +889,22 @@ export function Mailbox() {
                           >
                             {m.subject || "(无主题)"}
                           </span>
+                          {(m.hasAttachments || m.hasCalendarInvite) && (
+                            <span className="flex items-center gap-2 text-[11px] leading-tight text-muted">
+                              {m.hasCalendarInvite && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-1.5 py-0.5 text-accent">
+                                  <CalendarIcon className="size-3" />
+                                  日程
+                                </span>
+                              )}
+                              {m.hasAttachments && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-surface-secondary px-1.5 py-0.5 text-muted">
+                                  <PaperclipIcon className="size-3" />
+                                  附件
+                                </span>
+                              )}
+                            </span>
+                          )}
                           <span className="truncate text-xs leading-tight text-muted">
                             {m.snippet}
                           </span>

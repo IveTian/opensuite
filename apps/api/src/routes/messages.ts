@@ -16,7 +16,15 @@ import {
 } from "drizzle-orm";
 import { Hono } from "hono";
 import PostalMime from "postal-mime";
-import { attachments, emailAddresses, mailboxMembers, messages, userQuota } from "@mailflare/db";
+import {
+  attachments,
+  calendarEvents,
+  emailAddresses,
+  eventAttendees,
+  mailboxMembers,
+  messages,
+  userQuota,
+} from "@mailflare/db";
 import type { Database } from "@mailflare/db";
 import {
   bulkActionSchema,
@@ -26,6 +34,8 @@ import {
 } from "@mailflare/shared";
 import { z } from "zod";
 import type { AppEnv } from "../env.js";
+import type { Bindings } from "../env.js";
+import { parseIcs } from "../lib/ical.js";
 import { makeSnippet, resolveDelivery, storeInboundEmail } from "../lib/mail.js";
 import { sanitizeOutboundHtml } from "../lib/sanitize.js";
 import { attachmentKey, base64ToBytes, rawKey } from "../lib/storage.js";
@@ -71,6 +81,161 @@ async function accessibleMessage(db: Database, userId: string, id: string) {
   return row ?? null;
 }
 
+type InvitePartstat = "needs-action" | "accepted" | "declined" | "tentative";
+
+interface InviteAttachment {
+  id: string;
+  filename: string | null;
+  contentType: string | null;
+  sizeBytes: number | null;
+  contentId: string | null;
+  r2ObjectKey: string | null;
+}
+
+interface CalendarInvitePreview {
+  attachmentId: string;
+  filename: string | null;
+  method: string | null;
+  uid: string | null;
+  summary: string | null;
+  description: string | null;
+  location: string | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  allDay: boolean;
+  organizer: string | null;
+  myPartstat: InvitePartstat | null;
+  eventId: string | null;
+}
+
+const INVITE_PARTSTATS = new Set<InvitePartstat>(["needs-action", "accepted", "declined", "tentative"]);
+
+function normalizeInvitePartstat(v: string | null): InvitePartstat | null {
+  const s = (v ?? "").toLowerCase();
+  return INVITE_PARTSTATS.has(s as InvitePartstat) ? (s as InvitePartstat) : null;
+}
+
+function isCalendarAttachment(att: Pick<InviteAttachment, "contentType" | "filename">): boolean {
+  const ct = att.contentType?.toLowerCase() ?? "";
+  const name = att.filename?.toLowerCase() ?? "";
+  return ct.includes("text/calendar") || name.endsWith(".ics");
+}
+
+async function readCalendarInvites(
+  db: Database,
+  bucket: Bindings["RAW_EMAILS"],
+  user: { id: string; email: string },
+  atts: InviteAttachment[],
+): Promise<CalendarInvitePreview[]> {
+  const inviteDrafts: (Omit<CalendarInvitePreview, "eventId" | "myPartstat"> & {
+    uidKey: string | null;
+    fallbackPartstat: InvitePartstat | null;
+  })[] = [];
+  const uidKeys = new Set<string>();
+  const me = user.email.toLowerCase();
+
+  for (const att of atts.filter(isCalendarAttachment)) {
+    if (!att.r2ObjectKey) continue;
+    const obj = await bucket.get(att.r2ObjectKey);
+    if (!obj) continue;
+    const text = await obj.text();
+    const parsed = parseIcs(text);
+    if (!parsed) continue;
+
+    const fallback =
+      normalizeInvitePartstat(
+        parsed.attendees.find((a) => a.email.toLowerCase() === me)?.partstat ?? null,
+      ) ?? "needs-action";
+    const uidKey = parsed.uid ?? null;
+    if (uidKey) uidKeys.add(uidKey);
+
+    inviteDrafts.push({
+      attachmentId: att.id,
+      filename: att.filename,
+      method: parsed.method,
+      uid: parsed.uid,
+      uidKey,
+      summary: parsed.summary,
+      description: parsed.description,
+      location: parsed.location,
+      startsAt: parsed.dtstart ? parsed.dtstart.toISOString() : null,
+      endsAt: parsed.dtend ? parsed.dtend.toISOString() : null,
+      allDay: parsed.allDay,
+      organizer: parsed.organizer,
+      fallbackPartstat: fallback,
+    });
+  }
+
+  if (!inviteDrafts.length) return [];
+
+  const eventByUid = new Map<string, { id: string; partstat: InvitePartstat | null }>();
+  if (uidKeys.size) {
+    const rows = await db
+      .select({
+        id: calendarEvents.id,
+        uid: calendarEvents.uid,
+      })
+      .from(calendarEvents)
+      .where(
+        and(
+          eq(calendarEvents.userId, user.id),
+          inArray(calendarEvents.uid, [...uidKeys]),
+        ),
+      )
+      .orderBy(desc(calendarEvents.sequence), desc(calendarEvents.updatedAt));
+    const eventIds = rows.map((r) => r.id);
+    let partstatByEvent = new Map<string, InvitePartstat>();
+    if (eventIds.length) {
+      const attendeeRows = await db
+        .select({
+          eventId: eventAttendees.eventId,
+          partstat: eventAttendees.partstat,
+          userId: eventAttendees.userId,
+          email: eventAttendees.email,
+        })
+        .from(eventAttendees)
+        .where(
+          and(
+            inArray(eventAttendees.eventId, eventIds),
+            or(
+              eq(eventAttendees.userId, user.id),
+              sql`lower(${eventAttendees.email}) = ${me}`,
+            ),
+          ),
+        );
+      for (const row of attendeeRows) {
+        const part = normalizeInvitePartstat(row.partstat);
+        if (!part) continue;
+        const existing = partstatByEvent.get(row.eventId);
+        if (!existing || row.userId === user.id) partstatByEvent.set(row.eventId, part);
+      }
+    }
+    for (const row of rows) {
+      if (eventByUid.has(row.uid)) continue;
+      eventByUid.set(row.uid, { id: row.id, partstat: partstatByEvent.get(row.id) ?? null });
+    }
+  }
+
+  return inviteDrafts.map((inv) => {
+    const linked = inv.uidKey ? eventByUid.get(inv.uidKey) : null;
+    return {
+      attachmentId: inv.attachmentId,
+      filename: inv.filename,
+      method: inv.method,
+      uid: inv.uid,
+      summary: inv.summary,
+      description: inv.description,
+      location: inv.location,
+      startsAt: inv.startsAt,
+      endsAt: inv.endsAt,
+      allDay: inv.allDay,
+      organizer: inv.organizer,
+      myPartstat: linked?.partstat ?? inv.fallbackPartstat,
+      eventId: linked?.id ?? null,
+    };
+  });
+}
+
 const simulateSchema = z
   .object({
     addressId: z.string().uuid().optional(),
@@ -95,6 +260,24 @@ const LIST_FIELDS = {
   receivedAt: messages.receivedAt,
   sentAt: messages.sentAt,
   createdAt: messages.createdAt,
+  hasAttachments: sql<boolean>`
+    exists (
+      select 1
+      from attachments a
+      where a.message_id = ${messages.id}
+    )
+  `,
+  hasCalendarInvite: sql<boolean>`
+    exists (
+      select 1
+      from attachments a
+      where a.message_id = ${messages.id}
+        and (
+          lower(coalesce(a.content_type, '')) like '%text/calendar%'
+          or lower(coalesce(a.filename, '')) like '%.ics'
+        )
+    )
+  `,
 };
 
 export const messageRoutes = new Hono<AppEnv>()
@@ -596,7 +779,8 @@ export const messageRoutes = new Hono<AppEnv>()
   /** 邮件详情（含附件元数据） */
   .get("/:id", async (c) => {
     const db = c.var.db;
-    const row = await accessibleMessage(db, c.var.user!.id, c.req.param("id"));
+    const me = c.var.user!;
+    const row = await accessibleMessage(db, me.id, c.req.param("id"));
     if (!row) return c.json({ error: "邮件不存在" }, 404);
     const atts = await db
       .select({
@@ -605,10 +789,16 @@ export const messageRoutes = new Hono<AppEnv>()
         contentType: attachments.contentType,
         sizeBytes: attachments.sizeBytes,
         contentId: attachments.contentId,
+        r2ObjectKey: attachments.r2ObjectKey,
       })
       .from(attachments)
       .where(eq(attachments.messageId, row.m.id));
-    return c.json({ ...row.m, attachments: atts });
+    const calendarInvites = await readCalendarInvites(db, c.env.RAW_EMAILS, me, atts);
+    return c.json({
+      ...row.m,
+      attachments: atts.map(({ r2ObjectKey: _k, ...rest }) => rest),
+      calendarInvites,
+    });
   })
 
   /** 会话线程：同一对话内的邮件（按线程头聚合） */
