@@ -544,7 +544,7 @@ export function Mailbox() {
               size="sm"
               variant="ghost"
               className="flex-1 justify-start"
-              onClick={() => navigate("/")}
+              onClick={() => navigate("/account")}
             >
               <UserIcon className="size-4" />
               个人中心
