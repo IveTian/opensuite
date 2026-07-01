@@ -65,6 +65,14 @@ packages/shared Zod schema + 跨端类型 + 枚举常量（constants.ts 是唯�
 - **注册策略（公开/邀请码/审核）不在 Better Auth 里**，而是 `/api/public/sign-up` 包装层 + Hono 守卫强制执行；`autoSignIn:false`，收尾后显式 signIn。`user.create.after` 钩子保证每个新用户都有一行 `user_quota`。首位注册者自动成为 admin。
 - 跨子域会话：`app.` 与 `api.` 同根域，cookie `Domain=.example.com` + `SameSite=Lax`（`COOKIE_DOMAIN` 有值时开启）。
 
+### OIDC 身份提供方（MailFlare 作为 IdP）
+- `createAuth` 里挂了 Better Auth 的 `jwt` + `oidc-provider` 两个插件（`auth.config.ts` 同步镜像，改后需 `auth:generate`）。第三方应用可「用 MailFlare 登录」，首页应用中心也能挂第三方 SSO 磁贴。
+- **端点**（均在 `/api/auth` 下，由 `index.ts` 的 `app.on(["GET","POST"],"/api/auth/*")` 统一交给 Better Auth）：`oauth2/authorize`、`oauth2/token`、`oauth2/userinfo`、`oauth2/consent`、`oauth2/register`、`jwks`、`.well-known/openid-configuration`。另在**顶层**加了 `/.well-known/openid-configuration` 别名（issuer 根发现），issuer = `API_ORIGIN`。
+- **签名**：`useJWTPlugin:true` → id_token 用 `jwt` 插件的 **RS256** 密钥对签名，公钥经 `/api/auth/jwks` 暴露；`storeClientSecret:"hashed"`（明文 secret 仅注册时返回一次）；`requirePKCE:true`。
+- **表**：`oauthApplication` / `oauthAccessToken` / `oauthConsent`（oidc-provider）+ `jwks`（jwt），均手写于 `schema/auth.ts`。
+- **策略对齐**：`index.ts` 在 `oauth2/authorize` 前置守卫拦截 `approvalStatus:"pending"` / `banned` 用户（授权端点不经 `requireAuth`）。
+- **管理与启动器**：管理端 `/api/admin/oauth-apps`（增删改查、启停、launcher 配置）+ 前端 `/admin/oauth-apps`；`oauthApplication.metadata` 存 `{launchUrl, showInLauncher}`，`/api/me/sso-apps` 供首页 Launchpad 渲染第三方磁贴（点击即跳应用 `launchUrl`，走标准 OIDC 单点登录）。同意页在前端 `/oauth/consent`。
+
 ### 数据模型（`packages/db/src/schema/business.ts`）
 业务表：`domains` · `email_addresses`(mailbox/alias/catch_all/shared) · `mailbox_members` · `plans` · `user_quota` · `invite_codes` · `invite_code_redemptions` · `system_settings`(单行，主键固定 `global`) · `user_settings` · `departments` · `directory_profiles` · `personal_contacts` · `audit_log` · `messages` · `attachments`。R2 存大对象（`rawKey`=`raw/{id}.eml`、附件、`avatars/{userId}`），Postgres 只存元数据 + key + 可检索正文。
 
