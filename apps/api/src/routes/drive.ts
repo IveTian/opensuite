@@ -124,6 +124,10 @@ function handleErr(c: Context<AppEnv>, err: unknown) {
   return c.json({ error: err instanceof Error ? err.message : "操作失败" }, 500);
 }
 
+function isAdmin(c: Context<AppEnv>): boolean {
+  return (c.var.user?.role as string | undefined) === "admin";
+}
+
 export const driveRoutes = new Hono<AppEnv>()
   .use("*", loadUser, requireAuth)
 
@@ -141,7 +145,7 @@ export const driveRoutes = new Hono<AppEnv>()
     const db = c.var.db;
     const uid = c.var.user!.id;
     await getOrCreatePersonalSpace(db, uid);
-    const ctx = await loadDriveCtx(db, uid);
+    const ctx = await loadDriveCtx(db, uid, isAdmin(c));
     const spaces = await listAccessibleSpaces(db, ctx);
     const deptIds = spaces
       .map((s) => s.space.departmentId)
@@ -173,7 +177,7 @@ export const driveRoutes = new Hono<AppEnv>()
       const parentId = c.req.query("parentId") || null;
       const space = await db.query.driveSpaces.findFirst({ where: eq(driveSpaces.id, spaceId) });
       if (!space) return c.json({ error: "空间不存在" }, 404);
-      const ctx = await loadDriveCtx(db, uid);
+      const ctx = await loadDriveCtx(db, uid, isAdmin(c));
       const children = await listChildren(db, ctx, space, parentId);
       const names = await ownerNameMap(db, children.map((x) => x.node.ownerUserId));
       const items = children.map((x) => toNodeDto(x.node, x.role, x.node.ownerUserId ? names.get(x.node.ownerUserId) ?? null : null));
@@ -192,7 +196,7 @@ export const driveRoutes = new Hono<AppEnv>()
       const v = c.req.valid("json");
       const space = await db.query.driveSpaces.findFirst({ where: eq(driveSpaces.id, v.spaceId) });
       if (!space) return c.json({ error: "空间不存在" }, 404);
-      const ctx = await loadDriveCtx(db, uid);
+      const ctx = await loadDriveCtx(db, uid, isAdmin(c));
       await assertContainerWritable(db, ctx, space, v.parentId ?? null);
       const [row] = await db
         .insert(driveNodes)
@@ -227,7 +231,7 @@ export const driveRoutes = new Hono<AppEnv>()
       }
       const space = await db.query.driveSpaces.findFirst({ where: eq(driveSpaces.id, spaceId) });
       if (!space) return c.json({ error: "空间不存在" }, 404);
-      const ctx = await loadDriveCtx(db, uid);
+      const ctx = await loadDriveCtx(db, uid, isAdmin(c));
       await assertContainerWritable(db, ctx, space, parentId);
 
       const bytes = new Uint8Array(await c.req.arrayBuffer());
@@ -264,7 +268,7 @@ export const driveRoutes = new Hono<AppEnv>()
   .get("/nodes/:id", async (c) => {
     try {
       const db = c.var.db;
-      const ctx = await loadDriveCtx(db, c.var.user!.id);
+      const ctx = await loadDriveCtx(db, c.var.user!.id, isAdmin(c));
       const { node, role } = await loadNodeAccess(db, ctx, c.req.param("id"), "viewer");
       const names = await ownerNameMap(db, [node.ownerUserId]);
       return c.json(toNodeDto(node, role, node.ownerUserId ? names.get(node.ownerUserId) ?? null : null));
@@ -277,7 +281,7 @@ export const driveRoutes = new Hono<AppEnv>()
   .get("/nodes/:id/content", async (c) => {
     try {
       const db = c.var.db;
-      const ctx = await loadDriveCtx(db, c.var.user!.id);
+      const ctx = await loadDriveCtx(db, c.var.user!.id, isAdmin(c));
       const { node } = await loadNodeAccess(db, ctx, c.req.param("id"), "viewer");
       if (node.type !== "file" || !node.r2ObjectKey) return c.json({ error: "不是文件" }, 400);
       const obj = await c.env.RAW_EMAILS.get(node.r2ObjectKey);
@@ -298,7 +302,7 @@ export const driveRoutes = new Hono<AppEnv>()
   .patch("/nodes/:id", zValidator("json", renameNodeSchema), async (c) => {
     try {
       const db = c.var.db;
-      const ctx = await loadDriveCtx(db, c.var.user!.id);
+      const ctx = await loadDriveCtx(db, c.var.user!.id, isAdmin(c));
       const { node } = await loadNodeAccess(db, ctx, c.req.param("id"), "editor");
       const [row] = await db
         .update(driveNodes)
@@ -315,7 +319,7 @@ export const driveRoutes = new Hono<AppEnv>()
   .post("/nodes/:id/move", zValidator("json", moveNodeSchema), async (c) => {
     try {
       const db = c.var.db;
-      const ctx = await loadDriveCtx(db, c.var.user!.id);
+      const ctx = await loadDriveCtx(db, c.var.user!.id, isAdmin(c));
       const { node, space } = await loadNodeAccess(db, ctx, c.req.param("id"), "editor");
       const targetParentId = c.req.valid("json").parentId;
       if (targetParentId) {
@@ -345,7 +349,7 @@ export const driveRoutes = new Hono<AppEnv>()
   .delete("/nodes/:id", async (c) => {
     try {
       const db = c.var.db;
-      const ctx = await loadDriveCtx(db, c.var.user!.id);
+      const ctx = await loadDriveCtx(db, c.var.user!.id, isAdmin(c));
       const { node } = await loadNodeAccess(db, ctx, c.req.param("id"), "editor");
       await db
         .update(driveNodes)
@@ -361,7 +365,7 @@ export const driveRoutes = new Hono<AppEnv>()
   .post("/nodes/:id/restore", async (c) => {
     try {
       const db = c.var.db;
-      const ctx = await loadDriveCtx(db, c.var.user!.id);
+      const ctx = await loadDriveCtx(db, c.var.user!.id, isAdmin(c));
       const { node } = await loadNodeAccess(db, ctx, c.req.param("id"), "editor");
       await db
         .update(driveNodes)
@@ -381,7 +385,7 @@ export const driveRoutes = new Hono<AppEnv>()
       const spaceId = c.req.param("spaceId");
       const space = await db.query.driveSpaces.findFirst({ where: eq(driveSpaces.id, spaceId) });
       if (!space) return c.json({ error: "空间不存在" }, 404);
-      const ctx = await loadDriveCtx(db, uid);
+      const ctx = await loadDriveCtx(db, uid, isAdmin(c));
       // 需对空间有基础写权限或为个人 owner 才展示回收站
       const base = spaceBaseRole(space, ctx);
       if (!base) return c.json({ items: [] });
@@ -403,7 +407,7 @@ export const driveRoutes = new Hono<AppEnv>()
   .delete("/nodes/:id/permanent", async (c) => {
     try {
       const db = c.var.db;
-      const ctx = await loadDriveCtx(db, c.var.user!.id);
+      const ctx = await loadDriveCtx(db, c.var.user!.id, isAdmin(c));
       const { node, space } = await loadNodeAccess(db, ctx, c.req.param("id"), "editor");
       // 收集子树（含自身）
       const toDelete = await collectSubtree(db, node.id);
@@ -425,7 +429,7 @@ export const driveRoutes = new Hono<AppEnv>()
   .get("/nodes/:id/grants", async (c) => {
     try {
       const db = c.var.db;
-      const ctx = await loadDriveCtx(db, c.var.user!.id);
+      const ctx = await loadDriveCtx(db, c.var.user!.id, isAdmin(c));
       const { node } = await loadNodeAccess(db, ctx, c.req.param("id"), "editor");
       const rows = await db
         .select({
@@ -449,7 +453,7 @@ export const driveRoutes = new Hono<AppEnv>()
   .post("/nodes/:id/share-internal", zValidator("json", shareInternalSchema), async (c) => {
     try {
       const db = c.var.db;
-      const ctx = await loadDriveCtx(db, c.var.user!.id);
+      const ctx = await loadDriveCtx(db, c.var.user!.id, isAdmin(c));
       const { node } = await loadNodeAccess(db, ctx, c.req.param("id"), "editor");
       const v = c.req.valid("json");
       const [row] = await db
@@ -471,7 +475,7 @@ export const driveRoutes = new Hono<AppEnv>()
   .delete("/grants/:grantId", async (c) => {
     try {
       const db = c.var.db;
-      const ctx = await loadDriveCtx(db, c.var.user!.id);
+      const ctx = await loadDriveCtx(db, c.var.user!.id, isAdmin(c));
       const grant = await db.query.driveNodeGrants.findFirst({
         where: eq(driveNodeGrants.id, c.req.param("grantId")),
       });
@@ -505,7 +509,7 @@ export const driveRoutes = new Hono<AppEnv>()
   .get("/nodes/:id/shares", async (c) => {
     try {
       const db = c.var.db;
-      const ctx = await loadDriveCtx(db, c.var.user!.id);
+      const ctx = await loadDriveCtx(db, c.var.user!.id, isAdmin(c));
       const { node } = await loadNodeAccess(db, ctx, c.req.param("id"), "editor");
       const rows = await db
         .select()
@@ -521,7 +525,7 @@ export const driveRoutes = new Hono<AppEnv>()
   .post("/nodes/:id/shares", zValidator("json", createShareSchema), async (c) => {
     try {
       const db = c.var.db;
-      const ctx = await loadDriveCtx(db, c.var.user!.id);
+      const ctx = await loadDriveCtx(db, c.var.user!.id, isAdmin(c));
       const { node } = await loadNodeAccess(db, ctx, c.req.param("id"), "editor");
       const v = c.req.valid("json");
       const passwordHash = v.password ? await sha256Hex(v.password) : null;
@@ -546,7 +550,7 @@ export const driveRoutes = new Hono<AppEnv>()
   .delete("/shares/:shareId", async (c) => {
     try {
       const db = c.var.db;
-      const ctx = await loadDriveCtx(db, c.var.user!.id);
+      const ctx = await loadDriveCtx(db, c.var.user!.id, isAdmin(c));
       const share = await db.query.driveShares.findFirst({
         where: eq(driveShares.id, c.req.param("shareId")),
       });

@@ -35,9 +35,15 @@ export interface DriveCtx {
   userId: string;
   groupIds: Set<string>;
   deptScope: Set<string>;
+  /** 管理员对所有空间拥有 editor（便于初始化组织内容与统一管理）。 */
+  isAdmin: boolean;
 }
 
-export async function loadDriveCtx(db: Database, userId: string): Promise<DriveCtx> {
+export async function loadDriveCtx(
+  db: Database,
+  userId: string,
+  isAdmin = false,
+): Promise<DriveCtx> {
   const [groups, deptScope] = await Promise.all([
     db
       .select({ groupId: driveGroupMembers.groupId })
@@ -49,6 +55,7 @@ export async function loadDriveCtx(db: Database, userId: string): Promise<DriveC
     userId,
     groupIds: new Set(groups.map((g) => g.groupId)),
     deptScope: new Set(deptScope),
+    isAdmin,
   };
 }
 
@@ -72,8 +79,9 @@ function roleFromGrants(rows: GrantRow[], ctx: DriveCtx): DriveRole | null {
   return best;
 }
 
-/** 空间根的基础角色（不含节点授权）：个人 owner / 部门成员 → editor；org → null。 */
+/** 空间根的基础角色（不含节点授权）：admin / 个人 owner / 部门成员 → editor；org → null。 */
 export function spaceBaseRole(space: DriveSpaceRow, ctx: DriveCtx): DriveRole | null {
+  if (ctx.isAdmin) return "editor";
   if (space.type === "personal") {
     return space.ownerUserId === ctx.userId ? "editor" : null;
   }
