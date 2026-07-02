@@ -12,6 +12,7 @@ import { contextMiddleware } from "./middleware/context.js";
 import { adminRoutes } from "./routes/admin/index.js";
 import { calendarRoutes } from "./routes/calendar.js";
 import { contactRoutes } from "./routes/contacts.js";
+import { driveRoutes } from "./routes/drive.js";
 import { meRoutes } from "./routes/me.js";
 import { publicRoutes } from "./routes/public.js";
 
@@ -88,6 +89,7 @@ app.on(["GET", "POST"], "/api/auth/*", (c) => c.var.auth.handler(c.req.raw));
 // 6) 业务路由
 app.route("/api/public", publicRoutes);
 app.route("/api/me", meRoutes);
+app.route("/api/me/drive", driveRoutes);
 app.route("/api/contacts", contactRoutes);
 app.route("/api/calendar", calendarRoutes);
 app.route("/api/admin", adminRoutes);

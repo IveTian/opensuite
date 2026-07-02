@@ -3,6 +3,8 @@ export const rawKey = (messageId: string) => `raw/${messageId}.eml`;
 export const attachmentKey = (messageId: string, attachmentId: string) =>
   `att/${messageId}/${attachmentId}`;
 export const avatarKey = (userId: string) => `avatars/${userId}`;
+/** 网盘文件对象 key（按空间分区） */
+export const driveKey = (spaceId: string, nodeId: string) => `drive/${spaceId}/${nodeId}`;
 
 /** 把 postal-mime 的附件内容归一化为可写入 R2 的字节 */
 export function toBytes(content: ArrayBuffer | Uint8Array | string): Uint8Array {

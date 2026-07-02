@@ -6,6 +6,8 @@ import {
   CALENDAR_MEMBER_ROLES,
   CALENDAR_TYPES,
   DOMAIN_STATUSES,
+  DRIVE_ROLES,
+  DRIVE_SPACE_TYPES,
   EVENT_EDIT_SCOPES,
   EVENT_STATUSES,
   REGISTRATION_MODES,
@@ -132,6 +134,8 @@ export const assignQuotaSchema = z.object({
   storageQuotaBytes: z.coerce.number().int().nonnegative(),
   maxAddresses: z.coerce.number().int().positive().max(1000),
   dailySendQuota: z.coerce.number().int().nonnegative().nullable().optional(),
+  /** 个人网盘容量（null 则回退系统默认） */
+  driveQuotaBytes: z.coerce.number().int().nonnegative().nullable().optional(),
 });
 export type AssignQuotaInput = z.infer<typeof assignQuotaSchema>;
 
@@ -164,6 +168,8 @@ export const updateSettingsSchema = z.object({
   defaultPlanId: z.string().uuid().nullable().optional(),
   defaultStorageQuotaBytes: z.coerce.number().int().nonnegative(),
   defaultMaxAddresses: z.coerce.number().int().positive().max(1000),
+  /** 新用户个人网盘默认容量 */
+  defaultDriveQuotaBytes: z.coerce.number().int().nonnegative(),
   signupDefaultDomainId: z.string().uuid().nullable().optional(),
   /** 组织整体签名 */
   orgSignatureHtml: signatureHtml,
@@ -461,3 +467,106 @@ export const rsvpSchema = z.object({
   occurrenceStart: isoDateTime.optional(),
 });
 export type RsvpInput = z.infer<typeof rsvpSchema>;
+
+// ----------------------- 网盘 -----------------------
+
+const driveName = z.string().trim().min(1, "请填写名称").max(255);
+
+/** 新建文件夹 */
+export const createFolderSchema = z.object({
+  spaceId: z.string().uuid(),
+  parentId: z.string().uuid().nullable().optional(),
+  name: driveName,
+});
+export type CreateFolderInput = z.infer<typeof createFolderSchema>;
+
+/** 重命名节点 */
+export const renameNodeSchema = z.object({
+  name: driveName,
+});
+export type RenameNodeInput = z.infer<typeof renameNodeSchema>;
+
+/** 移动节点到另一个文件夹（同一空间内） */
+export const moveNodeSchema = z.object({
+  parentId: z.string().uuid().nullable(),
+});
+export type MoveNodeInput = z.infer<typeof moveNodeSchema>;
+
+/** 管理员创建组织/部门空间 */
+export const createSpaceSchema = z
+  .object({
+    type: z.enum(["org", "department"] as const),
+    name: driveName,
+    departmentId: z.string().uuid().nullable().optional(),
+    quotaBytes: z.coerce.number().int().nonnegative().nullable().optional(),
+  })
+  .refine((v) => v.type !== "department" || !!v.departmentId, {
+    message: "部门空间必须选择部门",
+    path: ["departmentId"],
+  });
+export type CreateSpaceInput = z.infer<typeof createSpaceSchema>;
+
+/** 管理员更新空间（改名 / 容量） */
+export const updateSpaceSchema = z.object({
+  name: driveName.optional(),
+  quotaBytes: z.coerce.number().int().nonnegative().nullable().optional(),
+});
+export type UpdateSpaceInput = z.infer<typeof updateSpaceSchema>;
+
+/** 权限组 */
+export const createGroupSchema = z.object({
+  name: z.string().trim().min(1, "请填写组名").max(64),
+  description: z.string().trim().max(255).nullable().optional(),
+});
+export type CreateGroupInput = z.infer<typeof createGroupSchema>;
+
+export const updateGroupSchema = z.object({
+  name: z.string().trim().min(1).max(64).optional(),
+  description: z.string().trim().max(255).nullable().optional(),
+});
+export type UpdateGroupInput = z.infer<typeof updateGroupSchema>;
+
+/** 往权限组加成员 */
+export const addGroupMemberSchema = z.object({
+  userId: z.string().min(1),
+});
+export type AddGroupMemberInput = z.infer<typeof addGroupMemberSchema>;
+
+/** 给节点授权：主体三选一（组/部门/用户），role 决定读写 */
+export const grantNodeSchema = z
+  .object({
+    groupId: z.string().uuid().nullable().optional(),
+    departmentId: z.string().uuid().nullable().optional(),
+    userId: z.string().min(1).nullable().optional(),
+    role: z.enum(DRIVE_ROLES).default("viewer"),
+  })
+  .refine(
+    (v) => [v.groupId, v.departmentId, v.userId].filter(Boolean).length === 1,
+    { message: "授权主体需且仅需指定其一（组/部门/用户）" },
+  );
+export type GrantNodeInput = z.infer<typeof grantNodeSchema>;
+
+/** 对内分享：把节点直接授权给某用户 */
+export const shareInternalSchema = z.object({
+  userId: z.string().min(1),
+  role: z.enum(DRIVE_ROLES).default("viewer"),
+});
+export type ShareInternalInput = z.infer<typeof shareInternalSchema>;
+
+/** 创建对外分享链接（密码/过期可选） */
+export const createShareSchema = z.object({
+  password: z.string().min(1).max(128).nullable().optional(),
+  role: z.enum(DRIVE_ROLES).default("viewer"),
+  allowDownload: z.boolean().default(true),
+  expiresAt: z.coerce.date().nullable().optional(),
+});
+export type CreateShareInput = z.infer<typeof createShareSchema>;
+
+/** 对外分享解锁（免登录侧，提交密码） */
+export const unlockShareSchema = z.object({
+  password: z.string().min(1).max(128),
+});
+export type UnlockShareInput = z.infer<typeof unlockShareSchema>;
+
+// 供前端下拉/类型收敛
+export const DRIVE_SPACE_TYPE_VALUES = DRIVE_SPACE_TYPES;

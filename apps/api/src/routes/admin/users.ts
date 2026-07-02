@@ -35,6 +35,8 @@ export const userRoutes = new Hono<AppEnv>()
         createdAt: user.createdAt,
         storageQuotaBytes: userQuota.storageQuotaBytes,
         usedBytes: userQuota.usedBytes,
+        driveQuotaBytes: userQuota.driveQuotaBytes,
+        driveUsedBytes: userQuota.driveUsedBytes,
         maxAddresses: userQuota.maxAddresses,
         addressCount: sql<number>`count(distinct ${emailAddresses.id})::int`,
       })
@@ -241,7 +243,7 @@ export const userRoutes = new Hono<AppEnv>()
   .put("/:id/quota", zValidator("json", assignQuotaSchema), async (c) => {
     const db = c.var.db;
     const id = c.req.param("id");
-    const { planId, storageQuotaBytes, maxAddresses, dailySendQuota } =
+    const { planId, storageQuotaBytes, maxAddresses, dailySendQuota, driveQuotaBytes } =
       c.req.valid("json");
 
     const u = await db.query.user.findFirst({ where: eq(user.id, id) });
@@ -259,6 +261,7 @@ export const userRoutes = new Hono<AppEnv>()
         storageQuotaBytes,
         maxAddresses,
         dailySendQuota: dailySendQuota ?? null,
+        driveQuotaBytes: driveQuotaBytes ?? null,
       })
       .onConflictDoUpdate({
         target: userQuota.userId,
@@ -267,6 +270,7 @@ export const userRoutes = new Hono<AppEnv>()
           storageQuotaBytes,
           maxAddresses,
           dailySendQuota: dailySendQuota ?? null,
+          driveQuotaBytes: driveQuotaBytes ?? null,
           updatedAt: new Date(),
         },
       })

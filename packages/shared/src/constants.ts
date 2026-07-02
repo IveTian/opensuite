@@ -79,3 +79,24 @@ export type RruleFreq = (typeof RRULE_FREQS)[number];
 /** 编辑/删除重复事件的作用范围 */
 export const EVENT_EDIT_SCOPES = ["this", "following", "all"] as const;
 export type EventEditScope = (typeof EVENT_EDIT_SCOPES)[number];
+
+// ----------------------- 网盘 -----------------------
+
+/** 网盘空间类型：个人 / 组织公共 / 部门 */
+export const DRIVE_SPACE_TYPES = ["personal", "org", "department"] as const;
+export type DriveSpaceType = (typeof DRIVE_SPACE_TYPES)[number];
+
+/** 网盘节点类型：文件夹 / 文件 */
+export const DRIVE_NODE_TYPES = ["folder", "file"] as const;
+export type DriveNodeType = (typeof DRIVE_NODE_TYPES)[number];
+
+/** 网盘授权角色（低→高）：只读 / 读写 */
+export const DRIVE_ROLES = ["viewer", "editor"] as const;
+export type DriveRole = (typeof DRIVE_ROLES)[number];
+
+/** 网盘授权主体：权限组 / 部门（动态）/ 用户直授（对内分享） */
+export const DRIVE_GRANT_SUBJECTS = ["group", "department", "user"] as const;
+export type DriveGrantSubject = (typeof DRIVE_GRANT_SUBJECTS)[number];
+
+/** 单文件上传大小上限（Worker 直传，字节）；超大文件后续走分片 */
+export const DRIVE_MAX_UPLOAD_BYTES = 100 * BYTES_PER_MB;

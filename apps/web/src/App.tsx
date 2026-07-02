@@ -10,6 +10,9 @@ import { Profile } from "./pages/Profile";
 import { Contacts } from "./pages/contacts/Contacts";
 import { Calendar } from "./pages/calendar/Calendar";
 import { Mailbox } from "./pages/mail/Mailbox";
+import { Drive } from "./pages/drive/Drive";
+import { PublicShare } from "./pages/drive/PublicShare";
+import { DriveSettings } from "./pages/admin/DriveSettings";
 import { Dashboard } from "./pages/admin/Dashboard";
 import { Domains } from "./pages/admin/Domains";
 import { Users } from "./pages/admin/Users";
@@ -40,6 +43,7 @@ export function App() {
             <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/s/:token" element={<PublicShare />} />
 
           {/* 管理后台（需管理员） */}
           <Route element={<ProtectedRoute requireAdmin />}>
@@ -54,6 +58,7 @@ export function App() {
               <Route path="invites" element={<Invites />} />
               <Route path="oauth-apps" element={<OAuthApps />} />
               <Route path="settings" element={<Settings />} />
+              <Route path="drive" element={<DriveSettings />} />
               <Route path="audit" element={<Audit />} />
               <Route path="simulate" element={<SimulateInbound />} />
             </Route>
@@ -68,6 +73,7 @@ export function App() {
             <Route path="/contacts" element={<Contacts />} />
             <Route path="/calendar" element={<Calendar />} />
             <Route path="/mail" element={<Mailbox />} />
+            <Route path="/drive" element={<Drive />} />
           </Route>
 
             <Route path="*" element={<Navigate to="/" replace />} />

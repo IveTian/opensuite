@@ -3,6 +3,9 @@ import type {
   AttendeeRole,
   CalendarMemberRole,
   CalendarType,
+  DriveNodeType,
+  DriveRole,
+  DriveSpaceType,
   EventStatus,
   RegistrationMode,
   ReminderMethod,
@@ -198,4 +201,111 @@ export interface CalendarMember {
   name: string;
   email: string;
   role: CalendarMemberRole;
+}
+
+// ----------------------- 网盘 -----------------------
+
+/** 网盘空间（含当前用户对它的最高权限角色） */
+export interface DriveSpace {
+  id: string;
+  type: DriveSpaceType;
+  name: string;
+  ownerUserId: string | null;
+  departmentId: string | null;
+  departmentName: string | null;
+  /** 容量上限；个人空间为用户配额，null 表示不限 */
+  quotaBytes: number | null;
+  usedBytes: number;
+  /** 当前用户在该空间根的默认权限（personal owner=editor；org/department 依授权） */
+  role: DriveRole;
+  /** 是否本人个人空间 */
+  isOwner: boolean;
+}
+
+/** 网盘节点（文件/文件夹），含当前用户有效权限 */
+export interface DriveNode {
+  id: string;
+  spaceId: string;
+  parentId: string | null;
+  type: DriveNodeType;
+  name: string;
+  ownerUserId: string | null;
+  ownerName: string | null;
+  sizeBytes: number;
+  mimeType: string | null;
+  isTrashed: boolean;
+  createdAt: string;
+  updatedAt: string;
+  /** 当前用户对该节点的有效权限 */
+  role: DriveRole;
+  /** 是否有公开分享链接（列表标记，可选） */
+  hasShare?: boolean;
+}
+
+/** 面包屑项 */
+export interface DriveBreadcrumb {
+  id: string;
+  name: string;
+}
+
+/** 权限组（含成员数） */
+export interface DrivePermissionGroup {
+  id: string;
+  name: string;
+  description: string | null;
+  memberCount: number;
+}
+
+/** 权限组成员 */
+export interface DriveGroupMember {
+  userId: string;
+  name: string;
+  email: string;
+}
+
+/** 节点授权项（管理界面展示） */
+export interface DriveGrant {
+  id: string;
+  nodeId: string;
+  subject: "group" | "department" | "user";
+  groupId: string | null;
+  departmentId: string | null;
+  userId: string | null;
+  /** 主体展示名 */
+  label: string;
+  role: DriveRole;
+}
+
+/** 对外分享链接 */
+export interface DriveShare {
+  id: string;
+  nodeId: string;
+  token: string;
+  hasPassword: boolean;
+  role: DriveRole;
+  allowDownload: boolean;
+  expiresAt: string | null;
+  createdAt: string;
+  revokedAt: string | null;
+}
+
+/** 网盘配额（用户侧） */
+export interface DriveQuota {
+  quotaBytes: number;
+  usedBytes: number;
+}
+
+/** 对外分享落地页元数据（免登录） */
+export interface PublicShareMeta {
+  needsPassword: boolean;
+  /** 解锁后才带节点信息 */
+  node?: {
+    id: string;
+    name: string;
+    type: DriveNodeType;
+    sizeBytes: number;
+    mimeType: string | null;
+  };
+  allowDownload: boolean;
+  expired: boolean;
 }
