@@ -4,6 +4,7 @@ import { loadUser, requireAdmin } from "../../middleware/auth.js";
 import { addressRoutes } from "./addresses.js";
 import { auditRoutes } from "./audit.js";
 import { directoryRoutes } from "./directory.js";
+import { driveAdminRoutes } from "./drive.js";
 import { domainRoutes } from "./domains.js";
 import { inviteRoutes } from "./invites.js";
 import { oauthAppRoutes } from "./oauth-apps.js";
@@ -22,6 +23,7 @@ export const adminRoutes = new Hono<AppEnv>()
   .route("/domains", domainRoutes)
   .route("/addresses", addressRoutes)
   .route("/directory", directoryRoutes)
+  .route("/drive", driveAdminRoutes)
   .route("/users", userRoutes)
   .route("/plans", planRoutes)
   .route("/invite-codes", inviteRoutes)

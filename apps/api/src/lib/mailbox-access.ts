@@ -8,42 +8,7 @@ import {
   user,
 } from "@mailflare/db";
 import type { Database } from "@mailflare/db";
-
-function ancestorIds(
-  all: { id: string; parentId: string | null }[],
-  departmentId: string | null,
-): string[] {
-  if (!departmentId) return [];
-  const byId = new Map(all.map((d) => [d.id, d]));
-  const out: string[] = [];
-  const seen = new Set<string>();
-  let cur: string | null = departmentId;
-  while (cur && !seen.has(cur)) {
-    seen.add(cur);
-    out.push(cur);
-    cur = byId.get(cur)?.parentId ?? null;
-  }
-  return out;
-}
-
-function isInDepartmentScope(
-  all: { id: string; parentId: string | null }[],
-  memberDepartmentId: string | null,
-  grantedDepartmentIds: Set<string>,
-): boolean {
-  return ancestorIds(all, memberDepartmentId).some((id) => grantedDepartmentIds.has(id));
-}
-
-async function userDepartmentScope(db: Database, userId: string): Promise<string[]> {
-  const profile = await db.query.directoryProfiles.findFirst({
-    where: eq(directoryProfiles.userId, userId),
-  });
-  if (!profile?.departmentId) return [];
-  const all = await db
-    .select({ id: departments.id, parentId: departments.parentId })
-    .from(departments);
-  return ancestorIds(all, profile.departmentId);
-}
+import { isInDepartmentScope, userDepartmentScope } from "./org.js";
 
 export async function readableAddressIds(db: Database, userId: string): Promise<string[]> {
   const deptIds = await userDepartmentScope(db, userId);

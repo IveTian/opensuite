@@ -126,6 +126,9 @@ export const userQuota = pgTable("user_quota", {
   maxAddresses: integer("max_addresses").notNull().default(1),
   dailySendQuota: integer("daily_send_quota"), // 预留
   sentToday: integer("sent_today").notNull().default(0), // 预留
+  // 网盘（个人 space）容量与用量，与邮件配额独立计量；null 则回退 system_settings.defaultDriveQuotaBytes
+  driveQuotaBytes: bigint("drive_quota_bytes", { mode: "number" }),
+  driveUsedBytes: bigint("drive_used_bytes", { mode: "number" }).notNull().default(0),
   updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
 });
 
@@ -181,6 +184,10 @@ export const systemSettings = pgTable("system_settings", {
     .notNull()
     .default(1073741824), // 1 GiB
   defaultMaxAddresses: integer("default_max_addresses").notNull().default(1),
+  // 新用户个人网盘 space 默认容量
+  defaultDriveQuotaBytes: bigint("default_drive_quota_bytes", { mode: "number" })
+    .notNull()
+    .default(1073741824), // 1 GiB
   signupDefaultDomainId: uuid("signup_default_domain_id").references(() => domains.id, {
     onDelete: "set null",
   }),
@@ -499,6 +506,144 @@ export const calendarReminderDispatch = pgTable(
   ],
 );
 
+// ============ drive_spaces 网盘空间（个人 / 组织公共 / 部门）============
+// personal：owner_user_id 拥有，懒创建；org：admin 创建的公共空间；
+// department：绑定 department_id，成员由组织架构动态派生（该部门及下级部门）。
+export const driveSpaces = pgTable(
+  "drive_spaces",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    type: text("type").notNull().default("personal"), // personal/org/department
+    ownerUserId: text("owner_user_id").references(() => user.id, { onDelete: "cascade" }),
+    departmentId: uuid("department_id").references(() => departments.id, {
+      onDelete: "cascade",
+    }),
+    name: text("name").notNull(),
+    // 容量上限（字节）；null 表示不限（org/department）或个人回退 user_quota.driveQuotaBytes
+    quotaBytes: bigint("quota_bytes", { mode: "number" }),
+    usedBytes: bigint("used_bytes", { mode: "number" }).notNull().default(0),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("drive_spaces_owner_idx").on(t.ownerUserId),
+    index("drive_spaces_department_idx").on(t.departmentId),
+    index("drive_spaces_type_idx").on(t.type),
+  ],
+);
+
+// ============ drive_nodes 文件/文件夹树（统一节点）============
+export const driveNodes = pgTable(
+  "drive_nodes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    spaceId: uuid("space_id")
+      .notNull()
+      .references(() => driveSpaces.id, { onDelete: "cascade" }),
+    // 自引用父文件夹；null 为空间根
+    parentId: uuid("parent_id"),
+    type: text("type").notNull(), // folder/file
+    name: text("name").notNull(),
+    ownerUserId: text("owner_user_id").references(() => user.id, { onDelete: "set null" }),
+    sizeBytes: bigint("size_bytes", { mode: "number" }).notNull().default(0),
+    mimeType: text("mime_type"),
+    // 文件二进制在 R2 的对象 key（文件夹为空）
+    r2ObjectKey: text("r2_object_key"),
+    isTrashed: boolean("is_trashed").notNull().default(false),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("drive_nodes_space_parent_idx").on(t.spaceId, t.parentId),
+    index("drive_nodes_parent_idx").on(t.parentId),
+    index("drive_nodes_owner_idx").on(t.ownerUserId),
+  ],
+);
+
+// ============ drive_permission_groups 权限组（全局 admin 实体）============
+export const drivePermissionGroups = pgTable("drive_permission_groups", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull().unique(),
+  description: text("description"),
+  createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+});
+
+// ============ drive_group_members 权限组成员（一个用户可属多个组）============
+export const driveGroupMembers = pgTable(
+  "drive_group_members",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    groupId: uuid("group_id")
+      .notNull()
+      .references(() => drivePermissionGroups.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("drive_group_members_group_user_uniq").on(t.groupId, t.userId),
+    index("drive_group_members_user_idx").on(t.userId),
+  ],
+);
+
+// ============ drive_node_grants 节点授权（授权主体三选一，沿目录树继承）============
+// 主体：权限组 group_id / 部门 department_id（动态，含下级部门）/ 用户直授 user_id（对内分享）。
+export const driveNodeGrants = pgTable(
+  "drive_node_grants",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    nodeId: uuid("node_id")
+      .notNull()
+      .references(() => driveNodes.id, { onDelete: "cascade" }),
+    groupId: uuid("group_id").references(() => drivePermissionGroups.id, {
+      onDelete: "cascade",
+    }),
+    departmentId: uuid("department_id").references(() => departments.id, {
+      onDelete: "cascade",
+    }),
+    userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
+    role: text("role").notNull().default("viewer"), // viewer(只读)/editor(读写)
+    createdByUserId: text("created_by_user_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("drive_node_grants_node_idx").on(t.nodeId),
+    index("drive_node_grants_group_idx").on(t.groupId),
+    index("drive_node_grants_department_idx").on(t.departmentId),
+    index("drive_node_grants_user_idx").on(t.userId),
+  ],
+);
+
+// ============ drive_shares 对外分享链接（可选密码/过期）============
+export const driveShares = pgTable(
+  "drive_shares",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    nodeId: uuid("node_id")
+      .notNull()
+      .references(() => driveNodes.id, { onDelete: "cascade" }),
+    token: text("token").notNull().unique(),
+    // 为空则免密访问；非空存 SHA-256 hex
+    passwordHash: text("password_hash"),
+    role: text("role").notNull().default("viewer"),
+    allowDownload: boolean("allow_download").notNull().default(true),
+    expiresAt: timestamp("expires_at", { mode: "date" }),
+    createdByUserId: text("created_by_user_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+    revokedAt: timestamp("revoked_at", { mode: "date" }),
+  },
+  (t) => [
+    index("drive_shares_node_idx").on(t.nodeId),
+    index("drive_shares_token_idx").on(t.token),
+  ],
+);
+
 // 行类型导出，供后端使用
 export type Domain = typeof domains.$inferSelect;
 export type EmailAddress = typeof emailAddresses.$inferSelect;
@@ -519,3 +664,9 @@ export type CalendarMemberRow = typeof calendarMembers.$inferSelect;
 export type CalendarEventRow = typeof calendarEvents.$inferSelect;
 export type EventAttendeeRow = typeof eventAttendees.$inferSelect;
 export type CalendarReminderDispatchRow = typeof calendarReminderDispatch.$inferSelect;
+export type DriveSpace = typeof driveSpaces.$inferSelect;
+export type DriveNode = typeof driveNodes.$inferSelect;
+export type DrivePermissionGroup = typeof drivePermissionGroups.$inferSelect;
+export type DriveGroupMember = typeof driveGroupMembers.$inferSelect;
+export type DriveNodeGrant = typeof driveNodeGrants.$inferSelect;
+export type DriveShare = typeof driveShares.$inferSelect;
