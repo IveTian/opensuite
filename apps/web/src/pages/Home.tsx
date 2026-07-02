@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import {
   AddressBookIcon,
   CalendarIcon,
+  HardDriveIcon,
   LogOutIcon,
   MailIcon,
   MoonIcon,
@@ -49,6 +50,13 @@ export const APPS: AppEntry[] = [
     to: "/calendar",
     Icon: CalendarIcon,
     tile: "bg-gradient-to-br from-violet-400 to-purple-600",
+  },
+  {
+    key: "drive",
+    name: "网盘",
+    to: "/drive",
+    Icon: HardDriveIcon,
+    tile: "bg-gradient-to-br from-amber-400 to-orange-600",
   },
   {
     key: "admin",

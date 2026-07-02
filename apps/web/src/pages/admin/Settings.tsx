@@ -14,6 +14,7 @@ interface Settings {
   requireAdminApproval: boolean;
   defaultStorageQuotaBytes: number;
   defaultMaxAddresses: number;
+  defaultDriveQuotaBytes: number;
   defaultPlanId: string | null;
   signupDefaultDomainId: string | null;
   orgSignatureHtml: string | null;
@@ -35,6 +36,7 @@ export function Settings() {
   const { data: plans } = useFetch<PlanRow[]>("/api/admin/plans");
 
   const [gib, setGib] = useState("1");
+  const [driveGib, setDriveGib] = useState("1");
   const [maxAddr, setMaxAddr] = useState("1");
   const [planId, setPlanId] = useState("");
   const [domainId, setDomainId] = useState("");
@@ -47,6 +49,7 @@ export function Settings() {
   useEffect(() => {
     if (!settings) return;
     setGib(String(bytesToGib(settings.defaultStorageQuotaBytes)));
+    setDriveGib(String(bytesToGib(settings.defaultDriveQuotaBytes)));
     setMaxAddr(String(settings.defaultMaxAddresses));
     setPlanId(settings.defaultPlanId ?? "");
     setDomainId(settings.signupDefaultDomainId ?? "");
@@ -76,6 +79,7 @@ export function Settings() {
         requireAdminApproval: false,
         defaultStorageQuotaBytes: gibToBytes(Number(gib)),
         defaultMaxAddresses: Number(maxAddr),
+        defaultDriveQuotaBytes: gibToBytes(Number(driveGib)),
         defaultPlanId: planId || null,
         signupDefaultDomainId: domainId || null,
         orgSignatureHtml: orgSig || null,
@@ -166,6 +170,17 @@ export function Settings() {
               />
             </TextField>
           </div>
+
+          <TextField>
+            <Label>默认个人网盘容量 (GiB)</Label>
+            <Input
+              type="number"
+              min={0}
+              step="0.5"
+              value={driveGib}
+              onChange={(e) => setDriveGib(e.target.value)}
+            />
+          </TextField>
 
           <Select
             label="默认套餐（可选，优先于上面的默认值）"
