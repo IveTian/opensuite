@@ -356,7 +356,7 @@ export function Drive() {
                       </span>
                     </button>
 
-                    <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                    <div className="flex shrink-0 items-center gap-0.5 opacity-70 transition-opacity group-hover:opacity-100">
                       {view === "trash" ? (
                         <>
                           <Button size="sm" variant="ghost" onClick={() => restoreNode(n)}>还原</Button>

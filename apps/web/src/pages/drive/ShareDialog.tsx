@@ -24,7 +24,6 @@ export function ShareDialog({ node, onClose }: { node: DriveNode; onClose: () =>
   const [busy, setBusy] = useState(false);
 
   // 新建外链表单
-  const [usePassword, setUsePassword] = useState(false);
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("viewer");
   const [allowDownload, setAllowDownload] = useState(true);
@@ -62,13 +61,12 @@ export function ShareDialog({ node, onClose }: { node: DriveNode; onClose: () =>
     setErr("");
     try {
       await api.post(`/api/me/drive/nodes/${node.id}/shares`, {
-        password: usePassword && password ? password : null,
+        password: password.trim() ? password.trim() : null,
         role,
         allowDownload,
         expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
       });
       setPassword("");
-      setUsePassword(false);
       setExpiresAt("");
       await loadShares();
     } catch (e2) {
@@ -141,21 +139,19 @@ export function ShareDialog({ node, onClose }: { node: DriveNode; onClose: () =>
                         ]}
                         className="w-32"
                       />
-                      <label className="flex items-center gap-2 text-sm">
-                        <Switch isSelected={allowDownload} onChange={setAllowDownload} /> 允许下载
-                      </label>
-                      <label className="flex items-center gap-2 text-sm">
-                        <Switch isSelected={usePassword} onChange={setUsePassword} /> 设置密码
-                      </label>
+                      <Switch isSelected={allowDownload} onChange={setAllowDownload}>
+                        允许下载
+                      </Switch>
                     </div>
-                    {usePassword && (
+                    <div className="flex flex-col gap-1.5 text-sm">
+                      <span className="font-medium text-foreground">访问密码（留空则公开）</span>
                       <Input
                         type="text"
-                        placeholder="访问密码"
+                        placeholder="留空则无需密码"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                       />
-                    )}
+                    </div>
                     <div className="flex flex-col gap-1.5 text-sm">
                       <span className="font-medium text-foreground">过期时间（可选）</span>
                       <Input type="datetime-local" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
