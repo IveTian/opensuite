@@ -9,6 +9,7 @@ import {
 } from "@mailflare/shared";
 import type { AppEnv } from "../../env.js";
 import { audit } from "../../lib/audit.js";
+import { revokeUserOidcTokens } from "../../lib/oidc.js";
 
 function escapeHtml(s: string): string {
   return s
@@ -207,6 +208,10 @@ export const userRoutes = new Hono<AppEnv>()
       .where(eq(user.id, id))
       .returning();
     if (!row) return c.json({ error: "用户不存在" }, 404);
+    // 置为待审核时，撤销其已签发的第三方 OIDC 令牌（与封禁一致，防止绕过审核门禁保持访问）。
+    if (patch.approvalStatus === "pending") {
+      await revokeUserOidcTokens(c.var.db, id);
+    }
     await audit(c.var.db, c.var.user!.id, "user.update", "user", id, patch);
     return c.json({ ok: true });
   })

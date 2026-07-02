@@ -1,4 +1,5 @@
 import { betterAuth } from "better-auth";
+import { APIError } from "better-auth/api";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { admin, jwt, oidcProvider } from "better-auth/plugins";
 import { eq } from "drizzle-orm";
@@ -98,16 +99,25 @@ export function createAuth(db: Database, env: AuthEnv) {
         // 插件在本版本被标记为将迁移到 @better-auth/oauth-provider（尚未发布），本版本仍应使用它。
         __skipDeprecationWarning: true,
         // 附加声明：按请求的 scope 往 id_token / userinfo 注入业务字段。
+        // 该回调在「换发 id_token」与「userinfo」两处必经，故兼作门禁兜底：
+        // 拦下 authorize/consent 守卫覆盖不到的路径（登录后 resume 直发 code、refresh 后调 userinfo）。
         getAdditionalUserInfoClaim: (user, scopes) => {
           const u = user as typeof user & {
-            role?: string | null;
             locale?: string | null;
             approvalStatus?: string | null;
+            banned?: boolean | null;
           };
+          // 待审核 / 已封禁用户不得签发或读取令牌声明。
+          if (u.approvalStatus === "pending" || u.banned) {
+            throw new APIError("FORBIDDEN", {
+              error: "access_denied",
+              error_description: "账号待管理员审核或已被封禁",
+            });
+          }
           const claims: Record<string, unknown> = {};
           if (scopes.includes("profile")) {
             claims.preferred_username = u.name;
-            claims.role = u.role ?? "user";
+            // 注意：不外泄内部 role（授权上下文），避免第三方应用借 profile scope 枚举管理员。
             if (u.locale) claims.locale = u.locale;
           }
           if (scopes.includes("email")) {

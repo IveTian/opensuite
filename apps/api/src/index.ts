@@ -6,7 +6,8 @@ import type { AppEnv, Bindings } from "./env.js";
 import { runCalendarReminders } from "./lib/calendar-reminders.js";
 import { runDailyMaintenance } from "./lib/cron.js";
 import { runScheduledMail } from "./lib/outbound-mail.js";
-import { loadUser } from "./middleware/auth.js";
+import { revokeUserOidcTokens } from "./lib/oidc.js";
+import { loadUser, requireAdmin, requireOidcEligible } from "./middleware/auth.js";
 import { contextMiddleware } from "./middleware/context.js";
 import { adminRoutes } from "./routes/admin/index.js";
 import { calendarRoutes } from "./routes/calendar.js";
@@ -53,13 +54,32 @@ app.post("/api/auth/sign-up/email", (c) =>
 );
 
 // 4.1) OIDC 授权前置守卫：待审核 / 已封禁用户即便有会话，也不得为第三方应用签发令牌。
-//   （requireAuth 只挂在业务路由上，授权端点由 Better Auth 直接处理，故在此单独拦截。）
-app.use("/api/auth/oauth2/authorize", loadUser, async (c, next) => {
-  const u = c.var.user;
-  if (u && (u.approvalStatus === "pending" || u.banned)) {
-    return c.json({ error: "账号待管理员审核或已被封禁，无法授权第三方应用" }, 403);
+//   （requireAuth 只挂在业务路由上，授权/同意端点由 Better Auth 直接处理，故在此单独拦截。）
+//   authorize 与 consent 都要拦：仅拦 authorize 会被「登录后 resume 直达 consent」绕过。
+app.use("/api/auth/oauth2/authorize", loadUser, requireOidcEligible);
+app.use("/api/auth/oauth2/consent", loadUser, requireOidcEligible);
+
+// 4.2) OIDC 动态客户端注册端点：强制仅管理员。
+//   Better Auth 的 /oauth2/register 只校验「有会话」（任何登录用户都能注册第三方 client），
+//   而本站设计注册仅限管理员（走 /api/admin/oauth-apps）。此处补齐 admin 守卫堵住直连该端点。
+//   注意：管理端 registerOAuthApplication 是服务端内部 api 调用，不经此 HTTP 路由，不受影响。
+app.use("/api/auth/oauth2/register", loadUser, requireAdmin);
+
+// 4.3) 封禁用户后撤销其 OIDC 令牌：Better Auth 只吊销本站会话，
+//   已签发的 access/refresh 令牌不会失效。封禁成功后清掉，切断第三方持久访问。
+app.use("/api/auth/admin/ban-user", async (c, next) => {
+  let userId: string | undefined;
+  try {
+    const body = (await c.req.raw.clone().json()) as { userId?: string } | null;
+    userId = body?.userId;
+  } catch {
+    /* 非 JSON body 时忽略 */
   }
   await next();
+  // 在此 await（而非 waitUntil）：确保在 contextMiddleware 关闭连接前完成删除。
+  if (userId && c.res.status >= 200 && c.res.status < 300) {
+    await revokeUserOidcTokens(c.var.db, userId);
+  }
 });
 
 // 5) Better Auth：处理 /api/auth/*（登录、登出、会话、admin / jwt / oidc 插件等）

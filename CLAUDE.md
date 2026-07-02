@@ -70,7 +70,11 @@ packages/shared Zod schema + 跨端类型 + 枚举常量（constants.ts 是唯�
 - **端点**（均在 `/api/auth` 下，由 `index.ts` 的 `app.on(["GET","POST"],"/api/auth/*")` 统一交给 Better Auth）：`oauth2/authorize`、`oauth2/token`、`oauth2/userinfo`、`oauth2/consent`、`oauth2/register`、`jwks`、`.well-known/openid-configuration`。另在**顶层**加了 `/.well-known/openid-configuration` 别名（issuer 根发现），issuer = `API_ORIGIN`。
 - **签名**：`useJWTPlugin:true` → id_token 用 `jwt` 插件的 **RS256** 密钥对签名，公钥经 `/api/auth/jwks` 暴露；`storeClientSecret:"hashed"`（明文 secret 仅注册时返回一次）；`requirePKCE:true`。
 - **表**：`oauthApplication` / `oauthAccessToken` / `oauthConsent`（oidc-provider）+ `jwks`（jwt），均手写于 `schema/auth.ts`。
-- **策略对齐**：`index.ts` 在 `oauth2/authorize` 前置守卫拦截 `approvalStatus:"pending"` / `banned` 用户（授权端点不经 `requireAuth`）。
+- **策略对齐**（这些端点由 Better Auth 直接处理、不经 `requireAuth`，故在 `index.ts` 单独补守卫）：
+  - `oauth2/authorize` **与** `oauth2/consent` 前置 `loadUser + requireOidcEligible`，拦 `approvalStatus:"pending"` / `banned`（只拦 authorize 会被「登录后 resume 直达 consent」绕过）。
+  - `oauth2/register`（动态客户端注册）前置 `loadUser + requireAdmin`——Better Auth 仅校验「有会话」，本站注册须限管理员（管理端 `registerOAuthApplication` 是服务端内部 api 调用，不经此 HTTP 路由、不受影响）。
+  - `getAdditionalUserInfoClaim` 兼作兜底：pending/banned 抛 `APIError` 阻断 id_token 换发与 userinfo（覆盖守卫够不到的 resume 直发 code / refresh 路径）；且**不外泄内部 `role`**。
+  - 封禁经 Better Auth `admin/ban-user`（只吊销会话、不失效已发令牌），`index.ts` 后置钩子成功后调 `lib/oidc.ts:revokeUserOidcTokens` 删该用户 `oauthAccessToken`；`PATCH /api/admin/users/:id` 置 pending 时同样清令牌。
 - **管理与启动器**：管理端 `/api/admin/oauth-apps`（增删改查、启停、launcher 配置）+ 前端 `/admin/oauth-apps`；`oauthApplication.metadata` 存 `{launchUrl, showInLauncher}`，`/api/me/sso-apps` 供首页 Launchpad 渲染第三方磁贴（点击即跳应用 `launchUrl`，走标准 OIDC 单点登录）。同意页在前端 `/oauth/consent`。
 
 ### 数据模型（`packages/db/src/schema/business.ts`）
