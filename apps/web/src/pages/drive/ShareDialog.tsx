@@ -231,7 +231,7 @@ export function ShareDialog({ node, onClose }: { node: DriveNode; onClose: () =>
               )}
             </Modal.Body>
             <Modal.Footer>
-              <Button variant="ghost" onClick={onClose}>关闭</Button>
+              <Button variant="ghost" onPress={onClose}>关闭</Button>
             </Modal.Footer>
           </Modal.Dialog>
         </Modal.Container>

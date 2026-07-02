@@ -323,7 +323,7 @@ function GroupMembersModal({
               </div>
             </Modal.Body>
             <Modal.Footer>
-              <Button variant="ghost" onClick={onClose}>关闭</Button>
+              <Button variant="ghost" onPress={onClose}>关闭</Button>
             </Modal.Footer>
           </Modal.Dialog>
         </Modal.Container>
@@ -518,7 +518,7 @@ function SpaceGrantsModal({
               </div>
             </Modal.Body>
             <Modal.Footer>
-              <Button variant="ghost" onClick={onClose}>关闭</Button>
+              <Button variant="ghost" onPress={onClose}>关闭</Button>
             </Modal.Footer>
           </Modal.Dialog>
         </Modal.Container>

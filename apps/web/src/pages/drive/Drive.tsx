@@ -459,7 +459,7 @@ function NameModal({
                 <Input autoFocus placeholder="名称" value={name} onChange={(e) => setName(e.target.value)} />
               </Modal.Body>
               <Modal.Footer>
-                <Button variant="ghost" onClick={onClose}>取消</Button>
+                <Button variant="ghost" onPress={onClose}>取消</Button>
                 <Button type="submit" isDisabled={busy || !name.trim()}>确定</Button>
               </Modal.Footer>
             </form>
@@ -548,7 +548,7 @@ function MoveModal({
               </div>
             </Modal.Body>
             <Modal.Footer>
-              <Button variant="ghost" onClick={onClose}>取消</Button>
+              <Button variant="ghost" onPress={onClose}>取消</Button>
               <Button isDisabled={busy} onClick={doMove}>移动到此处</Button>
             </Modal.Footer>
           </Modal.Dialog>
