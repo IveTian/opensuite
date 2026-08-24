@@ -1,122 +1,231 @@
+<div align="center">
+
 # MailFlare
 
-基于 Cloudflare 全家桶（Workers / Email Sending / Email Routing / R2 / Hyperdrive / DNS）的自建邮箱系统。
+**跑在 Cloudflare 上的自建邮箱，外加日历、通讯录与网盘。**
 
-> **进度**：阶段一「地基 + 管理后台」✅、阶段二「邮件收发核心」✅、阶段三「Webmail 体验」✅、阶段四「进阶与运维」✅。完整路线图见 [`building_plan.md`](./building_plan.md)。
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D24-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org)
+[![pnpm](https://img.shields.io/badge/pnpm-10-F69220?logo=pnpm&logoColor=white)](https://pnpm.io)
+[![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)](https://workers.cloudflare.com)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 
-## 功能一览
+个人或小团队把邮件放在自己的域名上：Workers 收发，Postgres 存元数据，R2 存原文与附件。前端是可安装的 PWA。
 
-- **管理后台**（`/admin`，管理员）：仪表盘（含按域名用量）、域名（DNS 校验 + Catch-all）、用户（角色/封禁/审核/配额）、邮箱地址（mailbox / **别名 alias**）、配额套餐、邀请码、注册策略、审计日志。
-- **用户邮箱**（`/mail`）：文件夹（收件箱/已发/草稿/星标/回收站）+ 未读计数、搜索、分页；读信与会话线程；写信（回复/转发带引用、附件上传、草稿自动保存）；星标、软删除→回收站→恢复/永久删除；`.eml` 原文与附件下载；配额条。「模拟收信」按钮可在未配置 DNS 时本地验证收件链路。
-- **注册**：公开 / 仅邀请码 / 关闭；邀请码原子占用 + 撤销；可选管理员审核；首位注册者自动成为管理员。
-- **OIDC 单点登录（MailFlare 作为身份提供方）**：第三方应用可「用 MailFlare 登录」（标准 OIDC 授权码 + PKCE，RS256 签名，`/.well-known/openid-configuration` 发现）。管理端 `/admin/oauth-apps` 注册应用并可挂到首页应用中心，点磁贴即以当前用户单点登录直达。
+[功能](#功能) · [截图](#截图) · [架构](#架构) · [快速开始](#快速开始) · [部署](#部署)
+
+</div>
+
+<p align="center">
+  <img src="docs/screenshots/mail-inbox.png" alt="MailFlare 收件箱" width="920" />
+</p>
+
+<p align="center">
+  <sub>收件箱 · 会话线程 · Gmail 风格快捷键 · 深色模式</sub>
+</p>
+
+---
+
+## 功能
+
+| 应用 | 能力 |
+| --- | --- |
+| **邮箱** | 文件夹（收件箱 / 已发 / 草稿 / 定时 / 星标 / 归档 / 回收站）、搜索与分页、会话线程、回复 / 转发带引用、富文本写信、附件、草稿自动保存、`.eml` 原文、批量操作、Gmail 键位、ICS 邀请 RSVP、实时推送与桌面通知、PWA 离线读信 |
+| **日历** | 日 / 周 / 月视图、重复规则、参与者、邮件邀请、提醒 |
+| **通讯录** | 组织目录（部门 / 职务）+ 个人通讯录，写信自动补全 |
+| **网盘** | 个人空间、文件夹、上传下载、分享链接、部门 / 权限组授权、回收站与配额 |
+| **管理后台** | 仪表盘与按域用量、域名 DNS 校验（MX / SPF / DKIM / DMARC）、用户与配额、mailbox / 别名 / catch-all、公共邮箱、OIDC 应用与启动器磁贴、审计日志、模拟收信 |
+| **身份** | MailFlare 可作为 OIDC IdP（授权码 + PKCE、RS256）。第三方「用 MailFlare 登录」，首页可挂 SSO 磁贴 |
+
+其它：跨子域会话 cookie、发信日配额 + Cron、容量计量、品牌（站点名 / Logo）、移动端底部导航。
+
+## 截图
+
+<p align="center">
+  <img src="docs/screenshots/launchpad.png" alt="应用中心（浅色）" width="48%" />
+  <img src="docs/screenshots/launchpad-dark.png" alt="应用中心（深色）" width="48%" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/mail-read.png" alt="读信" width="48%" />
+  <img src="docs/screenshots/mail-dark.png" alt="收件箱深色模式" width="48%" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/calendar.png" alt="日历" width="48%" />
+  <img src="docs/screenshots/contacts.png" alt="通讯录" width="48%" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/drive.png" alt="网盘" width="48%" />
+  <img src="docs/screenshots/admin.png" alt="管理后台" width="48%" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/login.png" alt="登录页" width="48%" />
+</p>
 
 ## 架构
 
-前后端分离双 Worker：
+前后端分离的两个 Worker，数据在外部 Postgres，大对象进 R2。
 
 ```
-apps/web   React 19 + HeroUI V3 + Tailwind v4（Vite）→ Cloudflare Static Assets Worker
-apps/api   Hono + Better Auth + email() 入站占位        → Cloudflare Worker
-packages/db      Drizzle schema + node-postgres 建连工厂 + 迁移 + 种子
-packages/auth    Better Auth 工厂（admin 插件 / 跨子域 cookie / 配额钩子）
-packages/shared  Zod 校验 + 跨端类型 + 枚举常量
+apps/web        React 19 + HeroUI V3 + Tailwind v4（Vite SPA）→ Static Assets Worker
+apps/api        Hono + Better Auth + email() / scheduled() / Durable Object
+packages/db     Drizzle schema · node-postgres · 迁移 · 种子
+packages/auth   Better Auth 工厂（admin 插件 / 跨子域 cookie / 配额钩子 / OIDC）
+packages/shared Zod schema · 跨端类型 · 枚举常量（唯一真源）
 ```
 
-数据：外部 Postgres（推荐 Neon）经 **Hyperdrive** 连接 + **R2** 存原始邮件/附件（阶段二）。
+```mermaid
+flowchart LR
+  Browser["浏览器 / PWA"] --> Web["apps/web<br/>Vite SPA"]
+  Browser --> API["apps/api<br/>Hono Worker"]
+  Web -->|"VITE_API_ORIGIN"| API
+  Inbound["Email Routing"] --> API
+  API --> Send["Email Sending"]
+  API --> HD["Hyperdrive<br/>caching-disabled"]
+  HD --> PG[("Postgres")]
+  API --> R2[("R2<br/>原文 / 附件 / 网盘")]
+  API --> DO["UserHub DO<br/>WebSocket 推送"]
+```
+
+生产建议 `app.example.com` + `api.example.com`，cookie `Domain=.example.com`、`SameSite=Lax`。
 
 ## 技术栈
 
-React 19 · HeroUI V3（3.2.x，CSS-first，无 Provider）· Tailwind v4 · Hono 4.12 · Better Auth 1.6 · Drizzle ORM 0.45 · node-postgres · Vite 8 · Wrangler 4 · pnpm workspaces + Turborepo。
+| 层 | 选型 |
+| --- | --- |
+| 前端 | React 19 · React Router 7 · HeroUI V3（CSS-first）· Tailwind v4 · TipTap · Vite 8 · PWA |
+| 后端 | Hono 4 · Better Auth 1.6 · Zod · postal-mime · ical.js |
+| 数据 | Drizzle ORM 0.45 · Postgres（经 Hyperdrive）· R2 |
+| 运行时 | Cloudflare Workers · Durable Objects · Cron Triggers · Email Routing / Sending |
+| 工程 | pnpm workspaces · Turborepo · TypeScript 5.7 · Wrangler 4 |
 
-## 需要你准备
+## 需要准备
 
-1. **Cloudflare 账号** + `wrangler login`；一个 Cloudflare 托管的**根域名**（用于 `app.` / `api.` 子域与后续邮件 onboarding）。
-2. **外部 Postgres**（推荐 [Neon](https://neon.tech) serverless），拿到「直连串」（非 pooler）。
+1. **Cloudflare 账号**，并 `wrangler login`。一个托管在 Cloudflare 的**根域名**（`app.` / `api.` 子域，以及后续邮件 MX）。
+2. **外部 Postgres**（[PlanetScale](https://planetscale.com) / [Neon](https://neon.tech) 等），使用**直连串**（不要 pooler、不要 Hyperdrive 串）。
+3. **Node.js ≥ 24** 与 **pnpm 10**（`packageManager` 已锁在仓库里）。
 
-## 快速开始（本地）
+## 快速开始
 
 ```bash
-# 1) 安装
 pnpm install
 
-# 2) 创建 Cloudflare 资源（把输出的 id 填回 apps/api/wrangler.jsonc 的 hyperdrive.id）
+# R2 + Hyperdrive（把输出的 id 填回 apps/api/wrangler.jsonc）
 wrangler r2 bucket create mailflare-raw-emails
-# 重要：必须 --caching-disabled！本系统是 auth/事务型读写，Hyperdrive 默认会缓存 SELECT(~60s)，
-# 会导致「注册后立即登录」读到过期的空结果而报 Invalid email or password。
+# 必须 --caching-disabled：auth 场景下默认 SELECT 缓存会让「注册后立刻登录」读到空结果
 wrangler hyperdrive create mailflare-hd --caching-disabled \
   --connection-string="postgres://<user>:<pw>@<host>/<db>?sslmode=require"
-# 已存在的 Hyperdrive 用：wrangler hyperdrive update <id> --caching-disabled
 
-# 3) 数据库迁移 + 种子（用 Neon 直连串）
-cd packages/db && cp .env.example .env   # 填入 DATABASE_URL（Neon 直连串）
-export DATABASE_URL="postgres://...neon-direct..."
-pnpm drizzle-kit migrate                 # 已含生成好的迁移（drizzle/0000_*.sql）
-pnpm --filter @mailflare/db seed         # 写入默认套餐 + system_settings（invite_only）
-cd ../..
+# 数据库（直连串，不是 Hyperdrive）
+cp packages/db/.env.example packages/db/.env   # 填 DATABASE_URL
+pnpm db:migrate
+pnpm db:seed
 
-# 4) api 本地密钥
-cd apps/api && cp .dev.vars.example .dev.vars
-#   填 BETTER_AUTH_SECRET（openssl rand -base64 32）
-#   填 WRANGLER_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE（= 你的 Neon 直连串）
-cd ../..
+# api 密钥
+cp apps/api/.dev.vars.example apps/api/.dev.vars
+# 填 BETTER_AUTH_SECRET（openssl rand -base64 32）
+# 以及 WEB_ORIGIN / API_ORIGIN；本地 COOKIE_DOMAIN 留空
 
-# 5) 启动（两个终端，或根目录 turbo 并行）
-pnpm --filter @mailflare/api dev    # http://localhost:8787
-pnpm --filter @mailflare/web dev    # http://localhost:5173
-#   或：pnpm dev
+# web
+cp apps/web/.env.example apps/web/.env.local   # VITE_API_ORIGIN=http://localhost:8787
 ```
 
-> **首位管理员**：在 invite_only 模式下，系统「零用户」时首个注册者会被自动放行并提升为 **admin**（解决引导鸡生蛋）。打开 `http://localhost:5173/register` 注册即成为管理员。之后注册需邀请码。
+本地起 api 时，Wrangler 从**进程环境变量**读 Hyperdrive 直连串，`.dev.vars` 不够：
 
-## 验证
+```bash
+export CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE="postgres://..."
+pnpm --filter @mailflare/api dev    # http://localhost:8787
+pnpm --filter @mailflare/web dev    # http://localhost:5173
+# 或：pnpm dev
+```
 
-| 检查 | 方法 |
-|---|---|
-| api + DB 连通 | `curl http://localhost:8787/api/health` → `{"ok":true}`（内部执行 `select 1`） |
-| web + 样式 | 打开 5173，HeroUI 按钮带样式；右上角切换深/浅色生效 |
-| 登录会话 | 注册/登录后 `GET /api/auth/get-session` 自动携带 cookie 返回当前用户 |
-| 权限 | 普通用户访问 `/api/admin/*` 得 403；管理员可进入后台 CRUD |
-| 邀请码 | invite_only 下无码注册 422；有效码注册成功且 `usedCount` 自增、配额自动创建 |
+打开 [http://localhost:5173/register](http://localhost:5173/register)。系统**零用户**时，第一位注册者自动成为管理员并进入域名配置向导；之后账号由管理员在后台创建。
+
+| 检查 | 期望 |
+| --- | --- |
+| `curl http://localhost:8787/api/health` | `{"ok":true}`（内部 `select 1`） |
+| 打开 5173 | 登录页有样式；右上角可切换深 / 浅色 |
+| `GET /api/auth/get-session` | 登录后 cookie 带回当前用户 |
+| 非管理员访问 `/api/admin/*` | 403 |
 
 ## 部署
 
-同根域不同子域（`app.example.com` / `api.example.com`），跨子域 cookie 用 `Domain=.example.com` + `SameSite=Lax`：
+同根域两个子域：`app.example.com` / `api.example.com`。
 
 ```bash
-# api：填 wrangler.jsonc 的 vars（WEB_ORIGIN/API_ORIGIN/COOKIE_DOMAIN=.example.com）
-wrangler secret put BETTER_AUTH_SECRET   # 在 apps/api 下
+# apps/api/wrangler.jsonc → vars：WEB_ORIGIN / API_ORIGIN / COOKIE_DOMAIN=.example.com
+cd apps/api && wrangler secret put BETTER_AUTH_SECRET
 pnpm --filter @mailflare/api deploy
 
-# web：apps/web/.env.local 的 VITE_API_ORIGIN 指向 https://api.example.com
+# apps/web/.env.local → VITE_API_ORIGIN=https://api.example.com
 pnpm --filter @mailflare/web deploy
 ```
 
-两个 Worker 各自绑定自定义域。生产迁移用 CI 跑 `drizzle-kit migrate`（Neon 直连串）。
+两个 Worker 各自绑自定义域。生产迁移用直连串跑 `pnpm db:migrate`（不要走 Hyperdrive）。真实收信还需要 Email Routing + MX / SPF（管理后台可一键校验）；出站走 Email Sending。
 
-## 关键约定
+## 项目结构
 
-- **Hyperdrive 必须关闭查询缓存**（`--caching-disabled`）：auth 是读写一致敏感场景，默认缓存会让「注册后立即登录」读到过期空结果，报 `Invalid email or password`（账号其实已建好）。`wrangler hyperdrive update <id> --caching-disabled`。
-- **Hyperdrive 仅 Worker 运行时可用**：所有本机工具（drizzle-kit / better-auth CLI）一律用 Neon **直连串** `DATABASE_URL`，切勿误用 Hyperdrive 串。
-- **Better Auth 只拥有** `user/session/account/verification` 四张表；业务表自管，经 `userId` 外键关联。
-- **认证表 schema** 为手写（`packages/db/src/schema/auth.ts`），对齐 admin 插件 + additionalFields；改认证配置后可用 `pnpm auth:generate` 重新生成。
-- 数据表清单见 `packages/db/src/schema/business.ts`（标注了第一阶段实装 vs 阶段二骨架）。
+```
+mailflare/
+├── apps/
+│   ├── api/          # Hono Worker：fetch / email / scheduled / UserHub
+│   └── web/          # Vite SPA + Static Assets Worker
+├── packages/
+│   ├── db/           # schema、迁移、seed
+│   ├── auth/         # createAuth(db, env)
+│   └── shared/       # Zod + 常量
+├── docs/screenshots/ # README 截图
+└── building_plan.md  # 分阶段实施记录
+```
 
-## 命令速查
+## 约定与坑
+
+- **Hyperdrive 必须 `--caching-disabled`**。默认缓存约 60s，注册后立刻登录会报 `Invalid email or password`（账号其实已写进库）。已有配置：`wrangler hyperdrive update <id> --caching-disabled`。
+- **Hyperdrive 只在 Worker 运行时可用**。drizzle-kit、Better Auth CLI、seed 一律用 `DATABASE_URL` 直连串。
+- **Better Auth 只拥有** `user` / `session` / `account` / `verification`（以及 OIDC / JWKS 相关表）。业务表自管，经 `userId` 外键关联。认证表手写于 `packages/db/src/schema/auth.ts`；改认证配置后跑 `pnpm auth:generate`。
+- 源码 import 带 `.js` 扩展名（`verbatimModuleSyntax` + Bundler）。枚举从 `@mailflare/shared` 引，不要在多处重定义。
+- 密钥进 `.dev.vars` / `wrangler secret`，不要写进 `wrangler.jsonc` 或提交。
+
+## 命令
 
 | 命令 | 作用 |
-|---|---|
+| --- | --- |
 | `pnpm dev` | 并行起 web + api |
-| `pnpm typecheck` | 全量类型检查 |
-| `pnpm db:generate` / `db:migrate` / `db:seed` | 生成迁移 / 应用迁移 / 种子 |
-| `pnpm cf-typegen` | 生成 api 的 Env 类型（改 wrangler.jsonc 后重跑） |
+| `pnpm typecheck` | 全仓 `tsc --noEmit` |
+| `pnpm build` | web：Vite；api：wrangler dry-run |
+| `pnpm db:generate` / `db:migrate` / `db:seed` | 生成迁移 / 应用 / 种子 |
+| `pnpm cf-typegen` | 改 `wrangler.jsonc` 后重生 Env 类型 |
+| `pnpm auth:generate` | 改认证配置后重生 auth schema |
+| `pnpm deploy` | 各包 `wrangler deploy` |
+
+没有测试框架；`lint` 是空 echo。改完代码默认跑 `pnpm typecheck`。
 
 ## 路线图
 
-完整分阶段计划见 [`building_plan.md`](./building_plan.md)。
+完整记录见 [`building_plan.md`](./building_plan.md)。
 
-- **阶段一·地基 + 管理后台** ✅
-- **阶段二·邮件收发核心** ✅ — `email()` 入站（postal-mime → `messages` 落库 + 原始 MIME/附件入 R2）；Email Sending 出站；`usedBytes` 计量。
-- **阶段三·Webmail 体验** ✅ — 会话线程、文件夹/搜索/分页、回复转发、附件上传、草稿、配额条。
-- **阶段四·进阶与运维** ✅ — 别名/catch-all、DNS(MX/SPF/DMARC/DKIM via DoH)校验、发信日配额 + Cron、审计日志、用量报表、.mbox 导出。
-- **后续（可选）** — 域名 onboarding 自动化、退信/抑制名单、IMAP/SMTP 网关、垃圾过滤、AI 自动回复。
+- [x] 地基 + 管理后台
+- [x] 邮件收发核心（入站 `email()` + 出站 Sending + R2）
+- [x] Webmail（线程、文件夹、草稿、附件、配额）
+- [x] 别名 / catch-all、DNS 校验、发信日配额、审计、用量
+- [x] 归档、批量、快捷键、移动端
+- [x] 日历、通讯录、网盘、PWA / 离线、OIDC IdP
+
+可选后续：域名 onboarding 自动化、退信 / 抑制名单、IMAP / SMTP 网关、垃圾过滤、标签 / Snooze。
+
+## 贡献
+
+Issue 和 PR 都欢迎。动手前请：
+
+1. 用 Node ≥ 24 + pnpm 10 装依赖。
+2. 改 schema 后 `pnpm db:generate && pnpm db:migrate`。
+3. 提交前 `pnpm typecheck`（改了 Worker 绑定再加 `pnpm build`）。
+
+更细的架构说明在 [`CLAUDE.md`](./CLAUDE.md)。
+
+## 许可证
+
+[MIT](./LICENSE)
